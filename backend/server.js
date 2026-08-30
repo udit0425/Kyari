@@ -5,11 +5,8 @@ import { fileURLToPath } from 'url';
 import { initDb, dbAll, dbRun } from './database.js';
 import { runCrawl } from './scraper.js';
 
-// Add this
-const sendWhatsAppAlert = async () => {
-  console.log('WhatsApp notification skipped - not configured yet.');
-  return { success: false, error: 'WhatsApp not configured' };
-};
+import qrcodeImg from 'qrcode';
+import { sendWhatsAppAlert, getLatestQR, isReady } from './whatsapp.js';
 
 const app = express();
 const PORT = process.env.PORT || 5001;
@@ -76,6 +73,28 @@ app.post('/api/bookings', async (req, res) => {
   }
 });
 
+// 3a. Serve WhatsApp QR Code for Authentication
+app.get('/api/whatsapp/qr', async (req, res) => {
+  if (isReady()) {
+    return res.send('WhatsApp is already authenticated and ready. No QR code needed.');
+  }
+  
+  const qrString = getLatestQR();
+  if (!qrString) {
+    return res.status(404).send('QR code not generated yet. Try again in a few seconds.');
+  }
+  
+  try {
+    const qrBuffer = await qrcodeImg.toBuffer(qrString, {
+      color: { dark: '#000000', light: '#ffffff' }
+    });
+    res.setHeader('Content-Type', 'image/png');
+    res.send(qrBuffer);
+  } catch (err) {
+    res.status(500).send('Error generating QR code image');
+  }
+});
+
 // 3b. Submit a guest booking request (internal notification, no frontend redirect)
 app.post('/api/booking-request', async (req, res) => {
   const { check_in, check_out, guest_phone, guest_count } = req.body;
@@ -95,12 +114,19 @@ app.post('/api/booking-request', async (req, res) => {
 
     // Send WhatsApp notification to the owner (9989750728)
     const ownerNumber = '9989750728';
-    const message = `*New Booking Request!*\n\n*Guest Mobile:* ${guest_phone}\n*Check-in:* ${check_in}\n*Check-out:* ${check_out}\n*Guests:* ${guest_count || 2}\n\nPlease reply to the guest directly to confirm.`;
+    const message = `🏡 *NEW BOOKING REQUEST*\n\n📅 *Check-in:* ${check_in}\n📅 *Check-out:* ${check_out}\n👥 *Guests:* ${guest_count || 2}\n📱 *Guest:* +91 ${guest_phone}\n\n━━━━━━━━━━━━━━\nPlease contact the guest to confirm availability.`;
     
-    // Fire and forget (don't block the API response)
-    sendWhatsAppAlert(ownerNumber, message);
+    const whatsappResult = await sendWhatsAppAlert(ownerNumber, message);
 
-    res.status(201).json({ success: true, id: result.lastID, message: 'Booking request saved and notification queued internally' });
+    if (!whatsappResult.success) {
+      return res.status(503).json({
+        success: false,
+        error: whatsappResult.error,
+        bookingRequestId: result.lastID
+      });
+    }
+
+    res.status(201).json({ success: true, id: result.lastID, message: 'Booking request saved and WhatsApp notification sent successfully' });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }

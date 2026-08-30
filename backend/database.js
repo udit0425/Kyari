@@ -1,10 +1,15 @@
 import sqlite3 from 'sqlite3';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
+import fs from 'fs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-const DB_PATH = join(__dirname, 'corbett_malbagadh.db');
+const PERSISTENT_DIR = '/var/data';
+const DB_FILENAME = 'corbett_malbagadh.db';
+const DB_PATH = fs.existsSync(PERSISTENT_DIR) 
+  ? join(PERSISTENT_DIR, DB_FILENAME) 
+  : join(__dirname, DB_FILENAME);
 
 const db = new sqlite3.Database(DB_PATH, (err) => {
   if (err) {

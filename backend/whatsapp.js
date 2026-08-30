@@ -1,16 +1,23 @@
+import fs from 'fs';
 import pkg from 'whatsapp-web.js';
 const { Client, LocalAuth } = pkg;
 import qrcode from 'qrcode-terminal';
-import qrcodeImg from 'qrcode';
+
+// Use persistent disk on Render if available, otherwise fallback to local dir
+const PERSISTENT_DIR = '/var/data';
+const sessionPath = fs.existsSync(PERSISTENT_DIR) 
+  ? `${PERSISTENT_DIR}/whatsapp-session` 
+  : './.wwebjs_auth';
 
 const client = new Client({
-    authStrategy: new LocalAuth(),
+    authStrategy: new LocalAuth({ dataPath: sessionPath }),
     puppeteer: {
         args: ['--no-sandbox', '--disable-setuid-sandbox']
     }
 });
 
 let isClientReady = false;
+let latestQR = null;
 
 client.on('qr', (qr) => {
     console.log('\n======================================================');
@@ -18,20 +25,14 @@ client.on('qr', (qr) => {
     console.log('======================================================\n');
     qrcode.generate(qr, { small: true });
     
-    qrcodeImg.toFile('/Users/anantabott/.gemini/antigravity/brain/57ade3da-e065-4450-aa0e-30320ed70781/qr.png', qr, {
-        color: {
-            dark: '#000000',  // Black dots
-            light: '#ffffff' // White background
-        }
-    }, function (err) {
-        if (err) console.error('Failed to save QR code image:', err);
-        else console.log('✅ QR Code image saved to artifact directory!');
-    });
+    // Store the latest QR for the API endpoint
+    latestQR = qr;
 });
 
 client.on('ready', () => {
     console.log('✅ WhatsApp Client is ready and authenticated!');
     isClientReady = true;
+    latestQR = null; // Clear it out since we're connected
 });
 
 client.on('auth_failure', msg => {
@@ -45,6 +46,9 @@ client.on('disconnected', (reason) => {
 
 client.initialize();
 
+export const getLatestQR = () => latestQR;
+export const isReady = () => isClientReady;
+
 /**
  * Send a WhatsApp message to a specific number
  * @param {string} number - The target mobile number
@@ -52,8 +56,8 @@ client.initialize();
  */
 export const sendWhatsAppAlert = async (number, message) => {
     if (!isClientReady) {
-        console.error('Cannot send message, WhatsApp client is not ready yet. Please scan the QR code in the terminal.');
-        return { success: false, error: 'Client not ready' };
+        console.error('Cannot send message, WhatsApp client is not ready yet. Please scan the QR code via the API.');
+        return { success: false, error: 'WhatsApp Client not ready' };
     }
     
     try {
