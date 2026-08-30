@@ -10,10 +10,18 @@ const sessionPath = fs.existsSync(PERSISTENT_DIR)
   : './.wwebjs_auth';
 
 const client = new Client({
-    authStrategy: new LocalAuth({ dataPath: sessionPath }),
-    puppeteer: {
-        args: ['--no-sandbox', '--disable-setuid-sandbox']
-    }
+  authStrategy: new LocalAuth({
+    dataPath: '/var/data/whatsapp-session'
+  }),
+  puppeteer: {
+    headless: true,
+    args: [
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+      '--disable-dev-shm-usage',
+      '--disable-gpu'
+    ]
+  }
 });
 
 let isClientReady = false;
