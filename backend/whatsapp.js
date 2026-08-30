@@ -1,182 +1,166 @@
 import fs from 'fs';
+import path from 'path';
 import pkg from 'whatsapp-web.js';
+import qrcode from 'qrcode-terminal';
+import qrcodeImg from 'qrcode';
+
 const { Client, LocalAuth } = pkg;
 
-import qrcode from 'qrcode-terminal';
+// --------------------------------------------------
+// Render persistent storage
+// --------------------------------------------------
 
-// ============================================================
-// WhatsApp Web configuration
-// ============================================================
+const PERSISTENT_DIR = '/var/data';
 
-// Render persistent disk:
-// /var/data
-//
-// Local development fallback:
-// ./ .wwebjs_auth
-//
-const RENDER_DATA_DIR = '/var/data';
-const LOCAL_DATA_DIR = './.wwebjs_auth';
+const SESSION_DIR = fs.existsSync(PERSISTENT_DIR)
+  ? path.join(PERSISTENT_DIR, 'whatsapp-session')
+  : './.wwebjs_auth';
 
-let dataDirectory = LOCAL_DATA_DIR;
+const QR_DIR = fs.existsSync(PERSISTENT_DIR)
+  ? path.join(PERSISTENT_DIR, 'whatsapp')
+  : './whatsapp';
 
-// If Render persistent storage exists, use it.
-try {
-  if (fs.existsSync(RENDER_DATA_DIR)) {
-    dataDirectory = RENDER_DATA_DIR;
-  }
-} catch (error) {
-  console.log('Could not access /var/data, using local storage.');
-}
+fs.mkdirSync(QR_DIR, { recursive: true });
 
-const sessionPath = `${dataDirectory}/whatsapp-session`;
-
-console.log('WhatsApp session path:', sessionPath);
-
-// ============================================================
-// WhatsApp Client
-// ============================================================
+// --------------------------------------------------
+// WhatsApp client
+// --------------------------------------------------
 
 const client = new Client({
   authStrategy: new LocalAuth({
-    dataPath: sessionPath
+    dataPath: SESSION_DIR
   }),
 
   puppeteer: {
     headless: true,
-
     args: [
       '--no-sandbox',
       '--disable-setuid-sandbox',
       '--disable-dev-shm-usage',
-      '--disable-gpu',
-      '--no-zygote',
-      '--no-first-run',
-      '--disable-extensions',
-      '--disable-background-networking',
-      '--disable-software-rasterizer'
+      '--disable-gpu'
     ]
   }
 });
 
-// ============================================================
+// --------------------------------------------------
 // State
-// ============================================================
+// --------------------------------------------------
 
 let isClientReady = false;
 let latestQR = null;
+let initializing = false;
 
-// ============================================================
+// --------------------------------------------------
 // QR CODE
-// ============================================================
+// --------------------------------------------------
 
-client.on('qr', (qr) => {
+client.on('qr', async (qr) => {
+  console.log('');
+  console.log('======================================================');
+  console.log(' WHATSAPP QR CODE GENERATED');
+  console.log('======================================================');
+  console.log('Scan this QR code with the WhatsApp account that');
+  console.log('will be used to send booking notifications.');
+  console.log('======================================================');
+
   latestQR = qr;
 
-  console.log('');
-  console.log('======================================================');
-  console.log(' WHATSAPP NEEDS TO BE LINKED');
-  console.log('======================================================');
-  console.log(' Scan the QR code below with the owner WhatsApp');
-  console.log('======================================================');
-  console.log('');
+  // Terminal QR
+  qrcode.generate(qr, { small: true });
 
-  qrcode.generate(qr, {
-    small: true
-  });
+  // Save QR image
+  const qrPath = path.join(QR_DIR, 'qr.png');
 
-  console.log('');
-  console.log('======================================================');
+  try {
+    await qrcodeImg.toFile(qrPath, qr, {
+      color: {
+        dark: '#000000',
+        light: '#ffffff'
+      }
+    });
+
+    console.log(`✅ QR code saved to: ${qrPath}`);
+  } catch (error) {
+    console.error('❌ Failed to save QR code:', error.message);
+  }
 });
 
-// ============================================================
-// Authentication
-// ============================================================
+// --------------------------------------------------
+// AUTHENTICATED
+// --------------------------------------------------
 
 client.on('authenticated', () => {
-  console.log('✅ WhatsApp authenticated successfully');
-
-  latestQR = null;
+  console.log('✅ WhatsApp authentication successful');
 });
 
-client.on('auth_failure', (message) => {
-  console.error('❌ WhatsApp authentication failure:');
-  console.error(message);
-
-  isClientReady = false;
-});
-
-// ============================================================
-// Ready
-// ============================================================
+// --------------------------------------------------
+// READY
+// --------------------------------------------------
 
 client.on('ready', () => {
   console.log('');
   console.log('======================================================');
   console.log('✅ WHATSAPP CLIENT IS READY');
   console.log('======================================================');
-  console.log('WhatsApp messages can now be sent.');
-  console.log('======================================================');
-  console.log('');
 
   isClientReady = true;
   latestQR = null;
 });
 
-// ============================================================
-// Disconnected
-// ============================================================
+// --------------------------------------------------
+// AUTH FAILURE
+// --------------------------------------------------
 
-client.on('disconnected', (reason) => {
-  console.log('');
-  console.log('❌ WhatsApp client disconnected');
-  console.log('Reason:', reason);
-  console.log('');
+client.on('auth_failure', (message) => {
+  console.error('❌ WhatsApp authentication failure:', message);
 
   isClientReady = false;
 });
 
-// ============================================================
-// Loading / State Events
-// ============================================================
+// --------------------------------------------------
+// DISCONNECTED
+// --------------------------------------------------
 
-client.on('loading_screen', (percent, message) => {
-  console.log(`WhatsApp loading: ${percent}% - ${message}`);
+client.on('disconnected', (reason) => {
+  console.log('⚠️ WhatsApp disconnected:', reason);
+
+  isClientReady = false;
 });
 
-client.on('change_state', (state) => {
-  console.log('WhatsApp state changed:', state);
-});
+// --------------------------------------------------
+// INITIALIZE
+// --------------------------------------------------
 
-// ============================================================
-// Initialize WhatsApp
-// ============================================================
+const initializeWhatsApp = async () => {
+  if (initializing) {
+    return;
+  }
 
-console.log('');
-console.log('Starting WhatsApp Web client...');
-console.log('');
+  initializing = true;
 
-client.initialize().catch((error) => {
-  console.error('');
-  console.error('❌ WhatsApp client failed to initialize');
-  console.error(error);
-  console.error('');
-});
+  try {
+    console.log('🚀 Initializing WhatsApp client...');
 
-// ============================================================
-// Send WhatsApp message
-// ============================================================
+    await client.initialize();
 
-/**
- * Send a WhatsApp message to a specific number.
- *
- * @param {string|number} number - Target mobile number
- * @param {string} message - Message content
- * @returns {Promise<{success: boolean, error?: string}>}
- */
+  } catch (error) {
+    console.error('❌ WhatsApp initialization failed:');
+    console.error(error);
+
+    isClientReady = false;
+
+  } finally {
+    initializing = false;
+  }
+};
+
+initializeWhatsApp();
+
+// --------------------------------------------------
+// SEND WHATSAPP MESSAGE
+// --------------------------------------------------
+
 export const sendWhatsAppAlert = async (number, message) => {
-  // ----------------------------------------------------------
-  // Check client status
-  // ----------------------------------------------------------
 
   if (!isClientReady) {
     console.error(
@@ -185,54 +169,38 @@ export const sendWhatsAppAlert = async (number, message) => {
 
     return {
       success: false,
-      error: 'WhatsApp client is not ready'
+      error: 'WhatsApp client not ready'
     };
   }
 
-  // ----------------------------------------------------------
-  // Format Indian phone number
-  // ----------------------------------------------------------
-
   try {
+
     let formattedNumber = String(number)
-      .replace(/\+/g, '')
-      .replace(/\s+/g, '')
-      .replace(/-/g, '');
+      .replace(/\D/g, '');
 
-    // Remove leading zeros
-    formattedNumber = formattedNumber.replace(/^0+/, '');
-
-    // Add India country code if a 10-digit number is supplied
+    // Indian 10-digit number
     if (formattedNumber.length === 10) {
       formattedNumber = `91${formattedNumber}`;
     }
 
     const chatId = `${formattedNumber}@c.us`;
 
-    console.log(
-      `📱 Sending WhatsApp message to ${chatId}...`
-    );
-
-    // --------------------------------------------------------
-    // Send message
-    // --------------------------------------------------------
+    console.log(`📱 Sending WhatsApp message to ${chatId}...`);
 
     await client.sendMessage(chatId, message);
 
-    console.log(
-      `✅ WhatsApp message sent successfully to ${chatId}`
-    );
+    console.log(`✅ WhatsApp message sent to ${chatId}`);
 
     return {
       success: true
     };
 
   } catch (error) {
-    console.error(
-      '❌ Failed to send WhatsApp message:'
-    );
 
-    console.error(error);
+    console.error(
+      '❌ Failed to send WhatsApp message:',
+      error.message
+    );
 
     return {
       success: false,
@@ -241,27 +209,18 @@ export const sendWhatsAppAlert = async (number, message) => {
   }
 };
 
-// ============================================================
-// WhatsApp status
-// ============================================================
+// --------------------------------------------------
+// CHECK WHATSAPP STATUS
+// --------------------------------------------------
 
-export const getWhatsAppStatus = () => {
-  return {
-    ready: isClientReady,
-    qrAvailable: !!latestQR
-  };
+export const isReady = () => {
+  return isClientReady;
 };
 
-// ============================================================
-// Export latest QR
-// ============================================================
-//
-// This is useful later if we want to expose the QR through
-// an API endpoint instead of relying on Render logs.
-//
-// The actual QR string is kept private here and is only
-// returned when explicitly requested by backend code.
-//
+// --------------------------------------------------
+// GET LATEST QR
+// --------------------------------------------------
+
 export const getLatestQR = () => {
   return latestQR;
 };
