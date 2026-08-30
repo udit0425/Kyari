@@ -2,7 +2,12 @@ import express from 'express';
 import cors from 'cors';
 import { initDb, dbAll, dbRun } from './database.js';
 import { runCrawl } from './scraper.js';
-import { sendWhatsAppAlert } from './whatsapp.js';
+
+// Add this
+const sendWhatsAppAlert = async () => {
+  console.log('WhatsApp notification skipped - not configured yet.');
+  return { success: false, error: 'WhatsApp not configured' };
+};
 
 const app = express();
 const PORT = process.env.PORT || 5001;
@@ -133,7 +138,7 @@ app.get('/api/gallery', async (req, res) => {
 });
 
 // Start Server and Init Database
-app.listen(PORT, async () => {
+app.listen(PORT, '0.0.0.0', async () => {
   console.log(`Server running on http://localhost:${PORT}`);
   
   try {
