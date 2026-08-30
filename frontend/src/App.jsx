@@ -22,7 +22,7 @@ import {
   Leaf
 } from 'lucide-react';
 
-const API_BASE = 'http://localhost:5001/api';
+const API_BASE = 'https://kyari.onrender.com/api';
 const WA_NUMBER = '919989750728';
 
 /* ─────────────────── Icon helpers ─────────────────── */
