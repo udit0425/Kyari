@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 
 const API_BASE = 'https://kyari.onrender.com/api';
+const ASSET_BASE = import.meta.env.BASE_URL + 'assets/';
 const WA_NUMBER = '919989750728';
 
 /* ─────────────────── Icon helpers ─────────────────── */
@@ -142,7 +143,7 @@ function App() {
 
   // All images for lightbox: gallery first, then local fallbacks
   const allImages = galleryImages.length > 0 ? galleryImages : [
-    '/assets/exterior.png', '/assets/bedroom.png', '/assets/nature.png', '/assets/lounge.png'
+    `${ASSET_BASE}exterior.png`, `${ASSET_BASE}bedroom.png`, `${ASSET_BASE}nature.png`, `${ASSET_BASE}lounge.png`
   ];
 
   const openLightbox = (idx) => { setLightboxIndex(idx); setLightboxOpen(true); };
@@ -307,7 +308,7 @@ function App() {
         <div className="container navbar-container">
           <a href="#" className="nav-logo" style={{ display: 'flex', alignItems: 'center', gap: '10px', textDecoration: 'none' }}>
             <img
-              src="/assets/malbagadh_sign.jpg"
+              src={`${ASSET_BASE}malbagadh_sign.jpg`}
               alt="Malbagadh"
               style={{ width: '36px', height: '36px', borderRadius: '50%', objectFit: 'cover', border: '2px solid var(--secondary-accent)', flexShrink: 0 }}
             />
@@ -347,7 +348,7 @@ function App() {
       </nav>
 
       {/* ── Hero ── */}
-      <section className="hero" style={{ backgroundImage: `url('/assets/exterior.png')` }}>
+      <section className="hero" style={{ backgroundImage: `url('${ASSET_BASE}exterior.png')` }}>
         <div className="hero-overlay" />
         <div className="container" style={{ position: 'relative', zIndex: 10 }}>
           <div className="hero-content">
@@ -421,7 +422,7 @@ function App() {
           </div>
           <div style={{ position: 'relative' }}>
             <img
-              src="/assets/lounge.png"
+              src={`${ASSET_BASE}lounge.png`}
               alt="Malbagadh Lounge"
               style={{ width: '100%', borderRadius: 'var(--radius-lg)', boxShadow: 'var(--shadow-lg)' }}
             />
@@ -453,10 +454,10 @@ function App() {
           {/* Hero grid — first 4 images */}
           <div className="gallery-grid">
             {[
-              { fallback: '/assets/exterior.png', label: 'The Bungalow', sub: 'Warm stone and forest canopy' },
-              { fallback: '/assets/bedroom.png',  label: 'Forest Bedroom', sub: 'Wake up to birdsong' },
-              { fallback: '/assets/nature.png',   label: 'Valley View Deck', sub: 'Dusk & dawn wildlife spotting' },
-              { fallback: '/assets/lounge.png',   label: 'The Living Room', sub: 'Evenings by the fireplace' },
+              { fallback: `${ASSET_BASE}exterior.png`, label: 'The Bungalow', sub: 'Warm stone and forest canopy' },
+              { fallback: `${ASSET_BASE}bedroom.png`,  label: 'Forest Bedroom', sub: 'Wake up to birdsong' },
+              { fallback: `${ASSET_BASE}nature.png`,   label: 'Valley View Deck', sub: 'Dusk & dawn wildlife spotting' },
+              { fallback: `${ASSET_BASE}lounge.png`,   label: 'The Living Room', sub: 'Evenings by the fireplace' },
             ].map((item, idx) => (
               <div
                 key={idx}
@@ -613,7 +614,7 @@ function App() {
       {/* ── Booking Section ── */}
       <section id="booking" style={{ padding: '0', background: 'linear-gradient(160deg, #0D1612 0%, #1A3E2D 60%, #2A5A43 100%)', position: 'relative', overflow: 'hidden' }}>
         {/* Background texture overlay */}
-        <div style={{ position: 'absolute', inset: 0, backgroundImage: `url('/assets/nature.png')`, backgroundSize: 'cover', backgroundPosition: 'center', opacity: 0.12 }} />
+        <div style={{ position: 'absolute', inset: 0, backgroundImage: `url('${ASSET_BASE}nature.png')`, backgroundSize: 'cover', backgroundPosition: 'center', opacity: 0.12 }} />
 
         <div className="container" style={{ position: 'relative', zIndex: 2, padding: '80px 24px' }}>
           {/* Header */}
@@ -657,7 +658,7 @@ function App() {
               {/* Left — Image + info */}
               <div style={{ borderRadius: '20px', overflow: 'hidden', position: 'relative', height: '580px' }}>
                 <img
-                  src="/assets/exterior.png"
+                  src={`${ASSET_BASE}exterior.png`}
                   alt="Malbagadh"
                   style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                 />
@@ -1100,7 +1101,7 @@ function App() {
           <div className="footer-grid">
             <div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px' }}>
-                <img src="/assets/malbagadh_sign.jpg" alt="Malbagadh" style={{ width: '40px', height: '40px', borderRadius: '50%', objectFit: 'cover', border: '2px solid var(--secondary-accent)' }} />
+                <img src={`${ASSET_BASE}malbagadh_sign.jpg`} alt="Malbagadh" style={{ width: '40px', height: '40px', borderRadius: '50%', objectFit: 'cover', border: '2px solid var(--secondary-accent)' }} />
                 <h3 style={{ margin: 0, fontSize: '1.1rem' }}>Malbagadh Homestay</h3>
               </div>
               <p style={{ marginBottom: '16px', color: 'rgba(244,246,245,0.55)', fontSize: '0.9rem', lineHeight: 1.7 }}>
