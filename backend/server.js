@@ -1,5 +1,7 @@
 import express from 'express';
 import cors from 'cors';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import { initDb, dbAll, dbRun } from './database.js';
 import { runCrawl } from './scraper.js';
 
@@ -15,6 +17,14 @@ const PORT = process.env.PORT || 5001;
 // Middleware
 app.use(cors());
 app.use(express.json());
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+app.use(
+  '/assets/gallery',
+  express.static(path.join(__dirname, '../frontend/public/assets/gallery'))
+);
 
 // Routes
 // 1. Get all reviews
@@ -131,7 +141,16 @@ app.get('/api/sync-logs', async (req, res) => {
 app.get('/api/gallery', async (req, res) => {
   try {
     const images = await dbAll('SELECT * FROM gallery_images ORDER BY id ASC');
-    res.json(images);
+    const baseUrl = `https://kyari.onrender.com`;
+    
+    res.json(
+      images.map(image => ({
+        ...image,
+        url: image.url.startsWith('http')
+          ? image.url
+          : `${baseUrl}${image.url}`
+      }))
+    );
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
