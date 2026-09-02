@@ -46,6 +46,7 @@ const FloatingWhatsApp = () => (
     target="_blank"
     rel="noopener noreferrer"
     aria-label="Chat on WhatsApp"
+    className="floating-wa"
     style={{
       position: 'fixed',
       bottom: '28px',
@@ -79,6 +80,7 @@ function App() {
   const [galleryImages, setGalleryImages] = useState([]);
   const [visibleReviewsCount, setVisibleReviewsCount] = useState(6);
   const [navScrolled, setNavScrolled] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   // Gallery lightbox
   const [lightboxOpen, setLightboxOpen] = useState(false);
@@ -343,9 +345,37 @@ function App() {
             >
               <InstagramIcon size={22} />
             </a>
+            {/* Hamburger button — mobile only */}
+            <button
+              className="hamburger-btn"
+              aria-label="Open menu"
+              onClick={() => setMobileMenuOpen(true)}
+            >
+              <span style={{ background: navScrolled ? 'var(--primary-deep)' : '#fff' }} />
+              <span style={{ background: navScrolled ? 'var(--primary-deep)' : '#fff' }} />
+              <span style={{ background: navScrolled ? 'var(--primary-deep)' : '#fff' }} />
+            </button>
           </div>
         </div>
       </nav>
+
+      {/* Mobile nav drawer */}
+      <div
+        className={`mobile-nav-drawer${mobileMenuOpen ? ' open' : ''}`}
+        onClick={() => setMobileMenuOpen(false)}
+      >
+        <div className="mobile-nav-panel" onClick={e => e.stopPropagation()}>
+          <button
+            onClick={() => setMobileMenuOpen(false)}
+            style={{ position: 'absolute', top: '20px', right: '20px', background: 'none', border: 'none', fontSize: '1.4rem', cursor: 'pointer', color: 'var(--text-muted)' }}
+          >✕</button>
+          <a href="#about" onClick={() => setMobileMenuOpen(false)}>Our Story</a>
+          <a href="#gallery" onClick={() => setMobileMenuOpen(false)}>Gallery</a>
+          <a href="#booking" onClick={() => setMobileMenuOpen(false)}>Book a Stay</a>
+          <a href="#reviews" onClick={() => setMobileMenuOpen(false)}>Guest Reviews</a>
+          <a href={`https://wa.me/${WA_NUMBER}`} target="_blank" rel="noopener noreferrer" style={{ color: '#25D366', marginTop: '8px' }}>📲 WhatsApp Us</a>
+        </div>
+      </div>
 
       {/* ── Hero ── */}
       <section className="hero" style={{ backgroundImage: `url('${ASSET_BASE}exterior.png')` }}>
@@ -363,7 +393,7 @@ function App() {
               A secluded hilltop bungalow above Kyari village, deep in the Betalghat forests of Kumaon.
               Homemade meals, wildlife trails, and true silence await.
             </p>
-            <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', marginTop: '8px' }}>
+            <div className="hero-buttons" style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', marginTop: '8px' }}>
               <a href="#booking" className="btn-primary">Check Availability</a>
               <a href="#gallery" className="btn-secondary" style={{ color: '#fff', borderColor: 'rgba(255,255,255,0.6)' }}>View Gallery</a>
             </div>
@@ -394,8 +424,8 @@ function App() {
       </div>
 
       {/* ── About Section ── */}
-      <section id="about" className="container" style={{ padding: '96px 24px' }}>
-        <div className="grid-cols-2" style={{ alignItems: 'center', gap: '64px' }}>
+      <section id="about" className="container" style={{ padding: '80px 24px' }}>
+        <div className="about-grid grid-cols-2" style={{ alignItems: 'center', gap: '64px' }}>
           <div>
             <div style={{ display: 'inline-flex', gap: '6px', alignItems: 'center', background: 'var(--bg-cream)', border: '1px solid var(--border-light)', borderRadius: '20px', padding: '6px 14px', marginBottom: '24px' }}>
               <Sparkles size={14} style={{ color: 'var(--secondary-accent)' }} />
@@ -654,9 +684,9 @@ function App() {
 
           {/* ── TAB: Check Dates ── */}
           {bookingTab === 'dates' && (
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '32px', maxWidth: '1000px', margin: '0 auto', alignItems: 'start' }}>
+            <div className="booking-two-col">
               {/* Left — Image + info */}
-              <div style={{ borderRadius: '20px', overflow: 'hidden', position: 'relative', height: '580px' }}>
+              <div className="booking-image-col" style={{ borderRadius: '20px', overflow: 'hidden', position: 'relative', height: '580px' }}>
                 <img
                   src={`${ASSET_BASE}exterior.png`}
                   alt="Malbagadh"
@@ -782,7 +812,7 @@ function App() {
                         );
                       }
                       return (
-                        <div style={{
+                        <div className="date-picker-dropdown" style={{
                           position: 'absolute', top: 'calc(100% + 8px)', left: 0, right: 0,
                           background: '#fff', borderRadius: '16px', boxShadow: '0 20px 60px rgba(0,0,0,0.18)',
                           border: '1px solid rgba(0,0,0,0.08)', zIndex: 1000, padding: '20px',
