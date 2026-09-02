@@ -1,10 +1,14 @@
 import fs from 'fs';
 import path from 'path';
+import { fileURLToPath } from 'url';
+import puppeteer from 'puppeteer';
 import pkg from 'whatsapp-web.js';
 import qrcode from 'qrcode-terminal';
 import qrcodeImg from 'qrcode';
 
 const { Client, LocalAuth } = pkg;
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // --------------------------------------------------
 // Render persistent storage
@@ -23,6 +27,21 @@ const QR_DIR = fs.existsSync(PERSISTENT_DIR)
 fs.mkdirSync(QR_DIR, { recursive: true });
 
 // --------------------------------------------------
+// Resolve Chrome executable path using puppeteer's own API
+// Falls back to system chrome if puppeteer's bundled one isn't found
+// --------------------------------------------------
+let chromePath;
+try {
+  const { executablePath } = await import('puppeteer');
+  chromePath = executablePath();
+  console.log(`[WhatsApp] Using Chrome at: ${chromePath}`);
+} catch (err) {
+  // Fallback — let whatsapp-web.js find it automatically
+  console.warn('[WhatsApp] Could not resolve Chrome path via puppeteer API, falling back to auto-detect');
+  chromePath = undefined;
+}
+
+// --------------------------------------------------
 // WhatsApp client
 // --------------------------------------------------
 
@@ -33,6 +52,7 @@ const client = new Client({
 
   puppeteer: {
     headless: true,
+    ...(chromePath ? { executablePath: chromePath } : {}),
     args: [
       '--no-sandbox',
       '--disable-setuid-sandbox',
