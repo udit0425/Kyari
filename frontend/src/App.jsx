@@ -953,20 +953,11 @@ function App() {
 
                 {/* Request Sent Success Card */}
                 {availabilityStatus === 'request-sent' && (
-                  <div style={{ marginTop: '20px', background: 'linear-gradient(135deg, #F0FDF4, #DCFCE7)', padding: '22px', borderRadius: '12px', border: '1px solid #BBF7D0' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
-                      <ShieldCheck size={22} style={{ color: '#16A34A', flexShrink: 0 }} />
-                      <strong style={{ fontSize: '1rem', color: '#14532D' }}>Booking Request Received! 🎉</strong>
-                    </div>
-                    <p style={{ fontSize: '0.88rem', color: '#166534', marginBottom: '14px', lineHeight: 1.5 }}>
-                      Thank you! Your request has been logged. We will contact you at <strong>{userPhone}</strong> shortly to confirm your reservation.
+                  <div style={{ marginTop: '20px', background: 'linear-gradient(135deg, #F0FDF4, #DCFCE7)', padding: '22px', borderRadius: '12px', border: '1px solid #BBF7D0', display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <ShieldCheck size={26} style={{ color: '#16A34A', flexShrink: 0 }} />
+                    <p style={{ fontSize: '0.95rem', color: '#14532D', fontWeight: 500, margin: 0, lineHeight: 1.5 }}>
+                      We have noted your enquiry. We will connect with you shortly.
                     </p>
-                    <div style={{ background: '#fff', padding: '14px', borderRadius: '8px', border: '1px solid #BBF7D0', fontSize: '0.85rem', color: 'var(--text-dark)', lineHeight: 1.6 }}>
-                      <div><strong>Mobile Number:</strong> {userPhone}</div>
-                      <div><strong>Check-in → Check-out:</strong> {fmt(checkIn)} → {fmt(checkOut)} ({getNights()} night{getNights() !== 1 ? 's' : ''})</div>
-                      <div><strong>Guests:</strong> {guestCount} guest{guestCount !== 1 ? 's' : ''}</div>
-                      <div><strong>Estimated Total:</strong> ₹{(getNights() * 12000).toLocaleString('en-IN')}</div>
-                    </div>
                   </div>
                 )}
               </div>
