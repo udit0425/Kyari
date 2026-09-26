@@ -22,7 +22,7 @@ import {
   Leaf
 } from 'lucide-react';
 
-const API_BASE = 'https://kyari.onrender.com/api';
+const API_BASE = 'https://api.malbagadh.in/api';
 const ASSET_BASE = import.meta.env.BASE_URL + 'assets/';
 const WA_NUMBER = '919989750728';
 
