@@ -12,7 +12,18 @@ const app = express();
 const PORT = process.env.PORT || 5001;
 
 // Middleware
-app.use(cors());
+app.use(cors({
+  origin: [
+    'https://malbagadh.in',
+    'https://www.malbagadh.in',
+    'http://localhost:5173',
+    'http://localhost:4173',
+    'https://udit0425.github.io'
+  ],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: true
+}));
 app.use(express.json());
 
 const __filename = fileURLToPath(import.meta.url);
