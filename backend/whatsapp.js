@@ -138,13 +138,29 @@ client.on('auth_failure', (message) => {
 });
 
 // --------------------------------------------------
-// DISCONNECTED
+// DISCONNECTED — auto-reconnect with backoff
 // --------------------------------------------------
 
-client.on('disconnected', (reason) => {
-  console.log('⚠️ WhatsApp disconnected:', reason);
+let reconnectAttempts = 0;
 
+client.on('disconnected', async (reason) => {
+  console.log(`⚠️ WhatsApp disconnected: ${reason}`);
   isClientReady = false;
+  initializing = false;
+
+  // Exponential backoff: 5s, 10s, 20s, 40s … max 60s
+  const delay = Math.min(5000 * Math.pow(2, reconnectAttempts), 60000);
+  reconnectAttempts++;
+
+  console.log(`🔄 Reconnecting in ${delay / 1000}s (attempt ${reconnectAttempts})...`);
+
+  setTimeout(async () => {
+    try {
+      await client.initialize();
+    } catch (err) {
+      console.error('❌ Reconnect failed:', err.message);
+    }
+  }, delay);
 });
 
 // --------------------------------------------------
@@ -152,29 +168,40 @@ client.on('disconnected', (reason) => {
 // --------------------------------------------------
 
 const initializeWhatsApp = async () => {
-  if (initializing) {
-    return;
-  }
-
+  if (initializing) return;
   initializing = true;
 
   try {
     console.log('🚀 Initializing WhatsApp client...');
-
     await client.initialize();
-
+    reconnectAttempts = 0; // reset on successful init
   } catch (error) {
-    console.error('❌ WhatsApp initialization failed:');
-    console.error(error);
-
+    console.error('❌ WhatsApp initialization failed:', error.message);
     isClientReady = false;
-
   } finally {
     initializing = false;
   }
 };
 
 initializeWhatsApp();
+
+// --------------------------------------------------
+// KEEP-ALIVE — ping self every 4 minutes to prevent
+// Render free tier from sleeping and killing Chromium
+// --------------------------------------------------
+
+const SELF_URL = process.env.RENDER_EXTERNAL_URL || 'https://api.malbagadh.in';
+
+setInterval(async () => {
+  try {
+    const res = await fetch(`${SELF_URL}/api/whatsapp/status`);
+    const data = await res.json();
+    console.log(`[Keep-Alive] ping → WhatsApp ready: ${data.ready}`);
+  } catch (err) {
+    console.warn(`[Keep-Alive] ping failed: ${err.message}`);
+  }
+}, 4 * 60 * 1000); // every 4 minutes
+
 
 // --------------------------------------------------
 // SEND WHATSAPP MESSAGE
