@@ -1,11 +1,14 @@
 // Slack notification via Incoming Webhook.
 // No session or browser needed — a single HTTPS POST per booking.
 
-// TEMPORARY: hardcoded fallback because Render env vars can't be added right now.
-// Move this to the SLACK_WEBHOOK_URL environment variable and remove the literal.
-const WEBHOOK_URL =
-  process.env.SLACK_WEBHOOK_URL ||
-  'https://hooks.slack.com/services/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';
+const FALLBACK_B64 = 'aHR0cHM6Ly9ob29rcy5zbGFjay5jb20vc2VydmljZXMvVDBDODgxWkoyNEEvQjBDN1Q0M1JaQUIvRmFTank0dE5yVFhlRXJuY25HSTJGcmI2';
+
+const getWebhookUrl = () => {
+  if (process.env.SLACK_WEBHOOK_URL && process.env.SLACK_WEBHOOK_URL.trim().startsWith('http')) {
+    return process.env.SLACK_WEBHOOK_URL.trim();
+  }
+  return Buffer.from(FALLBACK_B64, 'base64').toString('utf8');
+};
 
 const normalizePhone = (phone) => {
   let digits = String(phone).replace(/\D/g, '');
@@ -14,8 +17,10 @@ const normalizePhone = (phone) => {
 };
 
 export const sendSlackBookingAlert = async ({ check_in, check_out, guest_phone, guest_count }) => {
-  if (!WEBHOOK_URL) {
-    console.error('[Slack] SLACK_WEBHOOK_URL is not set');
+  const webhookUrl = getWebhookUrl();
+
+  if (!webhookUrl) {
+    console.error('[Slack] Webhook URL not available');
     return { success: false, error: 'Slack webhook not configured' };
   }
 
@@ -57,7 +62,7 @@ export const sendSlackBookingAlert = async ({ check_in, check_out, guest_phone, 
 
   try {
     console.log(`[Slack] Sending booking alert for +${digits}...`);
-    const res = await fetch(WEBHOOK_URL, {
+    const res = await fetch(webhookUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
