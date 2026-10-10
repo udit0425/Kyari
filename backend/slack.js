@@ -37,7 +37,7 @@ export const sendSlackBookingAlert = async ({ check_in, check_out, guest_phone, 
   const callLink = `tel:+${digits}`;
 
   const payload = {
-    text: `New booking request from +${digits}`,
+    text: `🏡 New booking request for ${check_in} → ${check_out} (+${digits})`,
     blocks: [
       { type: 'header', text: { type: 'plain_text', text: '🏡 New Booking Request', emoji: true } },
       {
@@ -45,16 +45,20 @@ export const sendSlackBookingAlert = async ({ check_in, check_out, guest_phone, 
         fields: [
           { type: 'mrkdwn', text: `*Check-in:*\n${check_in}` },
           { type: 'mrkdwn', text: `*Check-out:*\n${check_out}` },
-          { type: 'mrkdwn', text: `*Nights:*\n${nights}` },
-          { type: 'mrkdwn', text: `*Guests:*\n${guests}` },
-          { type: 'mrkdwn', text: `*Guest mobile:*\n+${digits}` }
+          { type: 'mrkdwn', text: `*Duration:*\n${nights} night${nights !== 1 ? 's' : ''}` },
+          { type: 'mrkdwn', text: `*Guests:*\n${guests} guest${guests !== 1 ? 's' : ''}` },
+          { type: 'mrkdwn', text: `*Guest Mobile:*\n+${digits}` }
         ]
       },
       {
         type: 'actions',
         elements: [
-          { type: 'button', style: 'primary', text: { type: 'plain_text', text: '💬 Reply on WhatsApp', emoji: true }, url: waLink },
-          { type: 'button', text: { type: 'plain_text', text: '📞 Call Guest', emoji: true }, url: callLink }
+          {
+            type: 'button',
+            style: 'primary',
+            text: { type: 'plain_text', text: '💬 Reply on WhatsApp', emoji: true },
+            url: waLink
+          }
         ]
       }
     ]
