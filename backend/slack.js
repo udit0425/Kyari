@@ -5,7 +5,7 @@
 // Move this to the SLACK_WEBHOOK_URL environment variable and remove the literal.
 const WEBHOOK_URL =
   process.env.SLACK_WEBHOOK_URL ||
-  'https://hooks.slack.com/services/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';
+  'https://hooks.slack.com/services/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';
 
 const normalizePhone = (phone) => {
   let digits = String(phone).replace(/\D/g, '');
