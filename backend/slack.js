@@ -1,7 +1,11 @@
 // Slack notification via Incoming Webhook.
 // No session or browser needed — a single HTTPS POST per booking.
 
-const WEBHOOK_URL = process.env.SLACK_WEBHOOK_URL;
+// TEMPORARY: hardcoded fallback because Render env vars can't be added right now.
+// Move this to the SLACK_WEBHOOK_URL environment variable and remove the literal.
+const WEBHOOK_URL =
+  process.env.SLACK_WEBHOOK_URL ||
+  'https://hooks.slack.com/services/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';
 
 const normalizePhone = (phone) => {
   let digits = String(phone).replace(/\D/g, '');
