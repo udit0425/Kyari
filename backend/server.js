@@ -5,8 +5,7 @@ import { fileURLToPath } from 'url';
 import { initDb, dbAll, dbRun } from './database.js';
 import { runCrawl } from './scraper.js';
 
-import qrcodeImg from 'qrcode';
-import { sendWhatsAppAlert, getLatestQR, isReady } from './whatsapp.js';
+import { sendSlackBookingAlert } from './slack.js';
 
 const app = express();
 const PORT = process.env.PORT || 5001;
@@ -84,44 +83,7 @@ app.post('/api/bookings', async (req, res) => {
   }
 });
 
-// 3a. Serve WhatsApp QR Code for Authentication
-app.get('/api/whatsapp/qr', async (req, res) => {
-  if (isReady()) {
-    return res.send('WhatsApp is already authenticated and ready. No QR code needed.');
-  }
-  
-  const qrString = getLatestQR();
-  if (!qrString) {
-    return res.status(404).send('QR code not generated yet. Try again in a few seconds.');
-  }
-  
-  try {
-    const qrBuffer = await qrcodeImg.toBuffer(qrString, {
-      color: { dark: '#000000', light: '#ffffff' }
-    });
-    res.setHeader('Content-Type', 'image/png');
-    res.send(qrBuffer);
-  } catch (err) {
-    res.status(500).send('Error generating QR code image');
-  }
-});
-
-app.get('/api/whatsapp/status', (req, res) => {
-  const ready = isReady();
-  const hasQR = !!getLatestQR();
-  console.log(`[WhatsApp Status] ready=${ready} hasQR=${hasQR}`);
-  res.json({
-    ready,
-    hasQR,
-    message: ready
-      ? '✅ WhatsApp client is authenticated and ready to send messages.'
-      : hasQR
-        ? '⏳ QR code is available. Visit /api/whatsapp/qr and scan it with your phone.'
-        : '❌ WhatsApp client is not ready and no QR code has been generated yet. The client may still be starting up — try again in 15 seconds.'
-  });
-});
-
-// 3b. Submit a guest booking request (internal notification, no frontend redirect)
+// 3a. Submit a guest booking request — saved to DB, owner alerted in Slack
 app.post('/api/booking-request', async (req, res) => {
   const { check_in, check_out, guest_phone, guest_count } = req.body;
   
@@ -138,28 +100,14 @@ app.post('/api/booking-request', async (req, res) => {
 
     console.log(`[Booking Request] ✅ Saved to DB — ID: ${result.lastID}, phone: ${guest_phone}, dates: ${check_in} → ${check_out}, guests: ${guest_count || 2}`);
 
-    // Send WhatsApp notification to the owner (9989750728)
-    const ownerNumber = '9989750728';
-    const message = `🏡 *NEW BOOKING REQUEST*\n\n📅 *Check-in:* ${check_in}\n📅 *Check-out:* ${check_out}\n👥 *Guests:* ${guest_count || 2}\n📱 *Guest:* +91 ${guest_phone}\n\n━━━━━━━━━━━━━━\nPlease contact the guest to confirm availability.`;
+    const slackResult = await sendSlackBookingAlert({ check_in, check_out, guest_phone, guest_count });
 
-    console.log(`[Booking Request] 📲 Attempting WhatsApp notification to ${ownerNumber}...`);
-    console.log(`[Booking Request] WhatsApp client ready: ${isReady()}`);
-    
-    const whatsappResult = await sendWhatsAppAlert(ownerNumber, message);
-
-    console.log(`[Booking Request] WhatsApp result:`, JSON.stringify(whatsappResult));
-
-    if (!whatsappResult.success) {
-      console.error(`[Booking Request] ❌ WhatsApp failed: ${whatsappResult.error}`);
-      return res.status(503).json({
-        success: false,
-        error: whatsappResult.error,
-        bookingRequestId: result.lastID
-      });
+    if (!slackResult.success) {
+      // The request is safely stored; don't fail the guest's submission.
+      console.error(`[Booking Request] ⚠️ Slack alert failed: ${slackResult.error} (request ${result.lastID} is saved)`);
     }
 
-    console.log(`[Booking Request] ✅ WhatsApp notification sent successfully`);
-    res.status(201).json({ success: true, id: result.lastID, message: 'Booking request saved and WhatsApp notification sent successfully' });
+    res.status(201).json({ success: true, id: result.lastID, notified: slackResult.success });
   } catch (error) {
     console.error(`[Booking Request] ❌ Unexpected error:`, error.message);
     res.status(500).json({ error: error.message });
