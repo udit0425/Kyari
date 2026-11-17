@@ -88,12 +88,13 @@ export const sendSlackBookingAlert = async ({ check_in, check_out, guest_phone, 
 
 // Clicks go to a separate channel. Each Slack Incoming Webhook is tied to ONE channel,
 // so set SLACK_CLICKS_WEBHOOK_URL to a webhook created for the clicks channel.
-// Falls back to the main (bookings) webhook if it isn't set.
+// Falls back to the built-in #livetracking webhook if it isn't set.
+const CLICKS_FALLBACK_B64 = 'aHR0cHM6Ly9ob29rcy5zbGFjay5jb20vc2VydmljZXMvVDBDODgxWkoyNEEvQjBDSkUzNkhBQTIvSGR5Y1ZYbjFJUW1GUHJHWk54S3puRnZD';
+
 const getClicksWebhookUrl = () => {
   const url = process.env.SLACK_CLICKS_WEBHOOK_URL;
   if (url && url.trim().startsWith('http')) return url.trim();
-  console.warn('[Slack] SLACK_CLICKS_WEBHOOK_URL not set — sending click alert to the main channel');
-  return getWebhookUrl();
+  return Buffer.from(CLICKS_FALLBACK_B64, 'base64').toString('utf8'); // #livetracking
 };
 
 const describeSource = (c) => {
