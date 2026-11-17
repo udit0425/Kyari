@@ -2,7 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { initDb, dbAll, dbRun } from './database.js';
+import { initDb, dbAll, dbRun, dbGet } from './database.js';
 import { runCrawl } from './scraper.js';
 
 import { sendSlackBookingAlert, sendSlackClickAlert } from './slack.js';
@@ -23,6 +23,7 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: true
 }));
+app.set('trust proxy', true); // real client IP behind Render/Cloudflare proxy
 app.use(express.json());
 
 const __filename = fileURLToPath(import.meta.url);
@@ -124,19 +125,80 @@ app.get('/api/booking-requests', async (req, res) => {
   }
 });
 
+// Lightweight user-agent parsing (no extra dependency)
+const parseUserAgent = (ua = '') => {
+  const device_type = /iPad|Tablet/i.test(ua) ? 'Tablet' : /Mobi|Android|iPhone/i.test(ua) ? 'Mobile' : 'Desktop';
+  const os =
+    /Windows/i.test(ua) ? 'Windows' :
+    /iPhone|iPad|iOS/i.test(ua) ? 'iOS' :
+    /Android/i.test(ua) ? 'Android' :
+    /Mac OS X/i.test(ua) ? 'macOS' :
+    /Linux/i.test(ua) ? 'Linux' : 'Other';
+  const browser =
+    /Edg\//i.test(ua) ? 'Edge' :
+    /SamsungBrowser/i.test(ua) ? 'Samsung Internet' :
+    /OPR\/|Opera/i.test(ua) ? 'Opera' :
+    /FBAN|FBAV|Instagram/i.test(ua) ? 'In-app (FB/IG)' :
+    /Chrome|CriOS/i.test(ua) ? 'Chrome' :
+    /Firefox|FxiOS/i.test(ua) ? 'Firefox' :
+    /Safari/i.test(ua) ? 'Safari' : 'Other';
+  return { device_type, os, browser };
+};
+
+const clip = (v, n = 500) => (v == null || v === '' ? null : String(v).slice(0, n));
+
 // Track clicks on Call / WhatsApp buttons and notify on Slack
 app.post('/api/track-click', async (req, res) => {
-  const { type, source } = req.body;
+  const b = req.body || {};
   const timestamp = new Date().toISOString();
+  const userAgent = req.get('user-agent') || '';
+  const { device_type, os, browser } = parseUserAgent(userAgent);
+
+  const click = {
+    type: clip(b.type, 20) || 'unknown',
+    source: clip(b.source, 100) || 'unknown',
+    visitor_id: clip(b.visitor_id, 64),
+    session_id: clip(b.session_id, 64),
+    ip: req.ip,
+    user_agent: clip(userAgent),
+    device_type, browser, os,
+    page_url: clip(b.page_url),
+    landing_page: clip(b.landing_page),
+    referrer: clip(b.referrer),
+    utm_source: clip(b.utm_source, 100),
+    utm_medium: clip(b.utm_medium, 100),
+    utm_campaign: clip(b.utm_campaign, 100),
+    utm_term: clip(b.utm_term, 100),
+    utm_content: clip(b.utm_content, 100),
+    gclid: clip(b.gclid, 200),
+    fbclid: clip(b.fbclid, 200),
+    screen: clip(b.screen, 20),
+    viewport: clip(b.viewport, 20),
+    language: clip(b.language, 20),
+    timezone: clip(b.timezone, 50),
+    // Populated only if the API sits behind Cloudflare (free geo headers)
+    country: clip(req.get('cf-ipcountry'), 10),
+    region: clip(req.get('cf-region'), 100),
+    city: clip(req.get('cf-ipcity'), 100),
+    time_on_page_sec: Number.isFinite(b.time_on_page_sec) ? b.time_on_page_sec : null,
+    scroll_depth_pct: Number.isFinite(b.scroll_depth_pct) ? Math.min(100, b.scroll_depth_pct) : null,
+    created_at: timestamp
+  };
 
   try {
+    const prior = click.visitor_id
+      ? await dbGet('SELECT COUNT(*) AS n FROM contact_clicks WHERE visitor_id = ?', [click.visitor_id])
+      : { n: 0 };
+    click.visit_number = (prior?.n || 0) + 1;
+
+    const cols = Object.keys(click);
     await dbRun(
-      'INSERT INTO contact_clicks (type, source, created_at) VALUES (?, ?, ?)',
-      [type || 'unknown', source || 'unknown', timestamp]
+      `INSERT INTO contact_clicks (${cols.join(', ')}) VALUES (${cols.map(() => '?').join(', ')})`,
+      cols.map(c => click[c])
     );
 
-    // Send background Slack notification
-    sendSlackClickAlert({ type, source }).catch(err => {
+    // Send background Slack notification (clicks channel)
+    sendSlackClickAlert(click).catch(err => {
       console.error('[Track Click] Slack notification error:', err.message);
     });
 

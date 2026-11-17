@@ -28,12 +28,76 @@ const PHONE_NUMBER_RAW = '9837056370';
 const PHONE_DISPLAY = '+91 98370 56370';
 const WA_NUMBER = '919837056370';
 
+// Anonymous IDs: visitor_id persists across visits (localStorage), session_id per tab session.
+const getStoredId = (storage, key) => {
+  try {
+    let id = storage.getItem(key);
+    if (!id) {
+      id = (crypto.randomUUID && crypto.randomUUID()) || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      storage.setItem(key, id);
+    }
+    return id;
+  } catch {
+    return null;
+  }
+};
+
+// First-touch attribution: remember UTM params / referrer from the landing visit.
+const getLandingContext = () => {
+  try {
+    const saved = sessionStorage.getItem('mb_landing');
+    if (saved) return JSON.parse(saved);
+    const params = new URLSearchParams(window.location.search);
+    const ctx = {
+      landing_page: window.location.pathname + window.location.search,
+      referrer: document.referrer || null,
+      utm_source: params.get('utm_source'),
+      utm_medium: params.get('utm_medium'),
+      utm_campaign: params.get('utm_campaign'),
+      utm_term: params.get('utm_term'),
+      utm_content: params.get('utm_content'),
+      gclid: params.get('gclid'),
+      fbclid: params.get('fbclid')
+    };
+    sessionStorage.setItem('mb_landing', JSON.stringify(ctx));
+    return ctx;
+  } catch {
+    return {};
+  }
+};
+if (typeof window !== 'undefined') getLandingContext();
+const PAGE_LOADED_AT = Date.now();
+
 const trackContactClick = (type, source) => {
   try {
+    const payload = {
+      type,
+      source,
+      visitor_id: getStoredId(localStorage, 'mb_visitor_id'),
+      session_id: getStoredId(sessionStorage, 'mb_session_id'),
+      page_url: window.location.href,
+      ...getLandingContext(),
+      screen: `${window.screen.width}x${window.screen.height}`,
+      viewport: `${window.innerWidth}x${window.innerHeight}`,
+      language: navigator.language,
+      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      time_on_page_sec: Math.round((Date.now() - PAGE_LOADED_AT) / 1000),
+      scroll_depth_pct: Math.round(
+        ((window.scrollY + window.innerHeight) / Math.max(document.documentElement.scrollHeight, 1)) * 100
+      )
+    };
+
+    // Google Analytics conversion event
+    if (typeof window.gtag === 'function') {
+      window.gtag('event', type === 'call' ? 'click_call' : 'click_whatsapp', { click_source: source });
+    }
+
+    // keepalive so the request survives the page navigating to tel:/wa.me
     fetch(`${API_BASE}/track-click`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ type, source })
+      body: JSON.stringify(payload),
+      keepalive: true
     }).catch(() => {});
   } catch (err) {
     // ignore

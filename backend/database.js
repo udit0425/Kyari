@@ -117,6 +117,22 @@ export const initDb = async () => {
     )
   `);
 
+  // Migrate contact_clicks: add visitor/context columns if missing
+  const clickCols = [
+    'visitor_id', 'session_id', 'ip', 'user_agent', 'device_type', 'browser', 'os',
+    'page_url', 'landing_page', 'referrer',
+    'utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content', 'gclid', 'fbclid',
+    'screen', 'viewport', 'language', 'timezone', 'country', 'region', 'city',
+    'time_on_page_sec INTEGER', 'scroll_depth_pct INTEGER', 'visit_number INTEGER'
+  ];
+  const existing = (await dbAll('PRAGMA table_info(contact_clicks)')).map(c => c.name);
+  for (const col of clickCols) {
+    const [name, colType = 'TEXT'] = col.split(' ');
+    if (!existing.includes(name)) {
+      await dbRun(`ALTER TABLE contact_clicks ADD COLUMN ${name} ${colType}`);
+    }
+  }
+
   // Check if seeded
   const bookingsCount = await dbGet('SELECT COUNT(*) as count FROM bookings');
   if (bookingsCount.count === 0) {

@@ -86,30 +86,60 @@ export const sendSlackBookingAlert = async ({ check_in, check_out, guest_phone, 
   }
 };
 
-export const sendSlackClickAlert = async ({ type, source }) => {
-  const webhookUrl = getWebhookUrl();
+// Clicks go to a separate channel. Each Slack Incoming Webhook is tied to ONE channel,
+// so set SLACK_CLICKS_WEBHOOK_URL to a webhook created for the clicks channel.
+// Falls back to the main (bookings) webhook if it isn't set.
+const getClicksWebhookUrl = () => {
+  const url = process.env.SLACK_CLICKS_WEBHOOK_URL;
+  if (url && url.trim().startsWith('http')) return url.trim();
+  console.warn('[Slack] SLACK_CLICKS_WEBHOOK_URL not set — sending click alert to the main channel');
+  return getWebhookUrl();
+};
+
+const describeSource = (c) => {
+  if (c.utm_source) return `${c.utm_source}${c.utm_medium ? ` / ${c.utm_medium}` : ''}${c.utm_campaign ? ` (${c.utm_campaign})` : ''}`;
+  if (c.gclid) return 'Google Ads';
+  if (c.fbclid) return 'Facebook / Instagram';
+  if (c.referrer) {
+    try { return new URL(c.referrer).hostname.replace(/^www\./, ''); } catch { return c.referrer; }
+  }
+  return 'Direct / unknown';
+};
+
+export const sendSlackClickAlert = async (click) => {
+  const webhookUrl = getClicksWebhookUrl();
   if (!webhookUrl) return { success: false, error: 'Slack webhook not configured' };
 
-  const isCall = type === 'call';
+  const isCall = click.type === 'call';
   const icon = isCall ? '📞' : '💬';
   const actionText = isCall ? 'Phone Call Click' : 'WhatsApp Click';
-  const timestamp = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
+  const timestamp = new Date(click.created_at || Date.now()).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
+  const location = [click.city, click.region, click.country].filter(Boolean).join(', ');
+  const visitor = click.visitor_id
+    ? `${click.visit_number > 1 ? `Returning (click #${click.visit_number})` : 'New'} · \`${click.visitor_id.slice(0, 8)}\``
+    : 'Unknown';
+
+  const fields = [
+    { type: 'mrkdwn', text: `*Button:*\n${click.source || 'Website'}` },
+    { type: 'mrkdwn', text: `*Time:*\n${timestamp} IST` },
+    { type: 'mrkdwn', text: `*Came from:*\n${describeSource(click)}` },
+    { type: 'mrkdwn', text: `*Device:*\n${click.device_type || '?'} · ${click.os || '?'} · ${click.browser || '?'}` },
+    { type: 'mrkdwn', text: `*Visitor:*\n${visitor}` },
+    { type: 'mrkdwn', text: `*Engagement:*\n${click.time_on_page_sec ?? '?'}s on page · ${click.scroll_depth_pct ?? '?'}% scrolled` }
+  ];
+  if (location) fields.push({ type: 'mrkdwn', text: `*Location:*\n${location}` });
+  if (click.timezone || click.language) {
+    fields.push({ type: 'mrkdwn', text: `*Locale:*\n${[click.timezone, click.language].filter(Boolean).join(' · ')}` });
+  }
 
   const payload = {
-    text: `${icon} Guest clicked *${actionText}* on malbagadh.in`,
+    text: `${icon} Guest clicked ${actionText} on malbagadh.in (${click.source || 'Website'})`,
     blocks: [
-      {
-        type: 'header',
-        text: { type: 'plain_text', text: `${icon} Website Lead Alert: ${actionText}`, emoji: true }
-      },
-      {
-        type: 'section',
-        fields: [
-          { type: 'mrkdwn', text: `*Action:*\n${actionText}` },
-          { type: 'mrkdwn', text: `*Location:*\n${source || 'Website'}` },
-          { type: 'mrkdwn', text: `*Time:*\n${timestamp} IST` }
-        ]
-      }
+      { type: 'header', text: { type: 'plain_text', text: `${icon} Website Lead Alert: ${actionText}`, emoji: true } },
+      { type: 'section', fields: fields.slice(0, 10) },
+      ...(click.page_url
+        ? [{ type: 'context', elements: [{ type: 'mrkdwn', text: `Page: ${click.page_url}${click.ip ? ` · IP: ${click.ip}` : ''}` }] }]
+        : [])
     ]
   };
 
@@ -119,10 +149,10 @@ export const sendSlackClickAlert = async ({ type, source }) => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
     });
+    if (!res.ok) console.error(`[Slack] Click alert returned ${res.status}: ${await res.text()}`);
     return { success: res.ok };
   } catch (err) {
     console.error('[Slack] Click alert failed:', err.message);
     return { success: false, error: err.message };
   }
 };
-
