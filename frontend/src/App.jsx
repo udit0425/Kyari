@@ -68,19 +68,84 @@ const getLandingContext = () => {
 if (typeof window !== 'undefined') getLandingContext();
 const PAGE_LOADED_AT = Date.now();
 
+// Microsoft Clarity (session recordings + heatmaps). Paste the project ID from clarity.microsoft.com.
+const CLARITY_PROJECT_ID = '';
+if (typeof window !== 'undefined' && CLARITY_PROJECT_ID) {
+  (function (c, l, a, r, i, t, y) {
+    c[a] = c[a] || function () { (c[a].q = c[a].q || []).push(arguments); };
+    t = l.createElement(r); t.async = 1; t.src = 'https://www.clarity.ms/tag/' + i;
+    y = l.getElementsByTagName(r)[0]; y.parentNode.insertBefore(t, y);
+  })(window, document, 'clarity', 'script', CLARITY_PROJECT_ID);
+}
+
+// What the visitor did on the page before clicking
+const journey = {
+  sections: [],        // sections seen, in order
+  dates_checked: [],   // check-in → check-out pairs picked in the booking calendar
+  guests_selected: null,
+  photos_opened: 0,
+  booking_request_sent: false
+};
+const trackSectionView = (name) => {
+  if (name && !journey.sections.includes(name)) journey.sections.push(name);
+};
+const trackDates = (checkIn, checkOut, guests) => {
+  if (!checkIn || !checkOut) return;
+  const pair = `${checkIn} → ${checkOut}`;
+  if (!journey.dates_checked.includes(pair)) journey.dates_checked.push(pair);
+  journey.guests_selected = guests;
+};
+const trackPhotoOpen = () => { journey.photos_opened += 1; };
+const trackBookingRequest = () => { journey.booking_request_sent = true; };
+
+const getDeviceExtras = () => {
+  try {
+    const conn = navigator.connection || {};
+    return {
+      dark_mode: window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'yes' : 'no',
+      connection: [conn.effectiveType, conn.type].filter(Boolean).join(' / ') || null,
+      touch: navigator.maxTouchPoints > 0 ? 'yes' : 'no'
+    };
+  } catch {
+    return {};
+  }
+};
+
+const getBaseContext = () => ({
+  visitor_id: getStoredId(localStorage, 'mb_visitor_id'),
+  session_id: getStoredId(sessionStorage, 'mb_session_id'),
+  page_url: window.location.href,
+  ...getLandingContext(),
+  screen: `${window.screen.width}x${window.screen.height}`,
+  viewport: `${window.innerWidth}x${window.innerHeight}`,
+  language: navigator.language,
+  timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+  ...getDeviceExtras()
+});
+
+// Record one page view per page load (used to count visits before a click)
+if (typeof window !== 'undefined') {
+  try {
+    fetch(`${API_BASE}/track-pageview`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(getBaseContext()),
+      keepalive: true
+    }).catch(() => {});
+  } catch { /* ignore */ }
+}
+
 const trackContactClick = (type, source) => {
   try {
     const payload = {
       type,
       source,
-      visitor_id: getStoredId(localStorage, 'mb_visitor_id'),
-      session_id: getStoredId(sessionStorage, 'mb_session_id'),
-      page_url: window.location.href,
-      ...getLandingContext(),
-      screen: `${window.screen.width}x${window.screen.height}`,
-      viewport: `${window.innerWidth}x${window.innerHeight}`,
-      language: navigator.language,
-      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      ...getBaseContext(),
+      sections_viewed: journey.sections,
+      dates_checked: journey.dates_checked,
+      guests_selected: journey.guests_selected,
+      photos_opened: journey.photos_opened,
+      booking_request_sent: journey.booking_request_sent,
       time_on_page_sec: Math.round((Date.now() - PAGE_LOADED_AT) / 1000),
       scroll_depth_pct: Math.round(
         ((window.scrollY + window.innerHeight) / Math.max(document.documentElement.scrollHeight, 1)) * 100
@@ -241,6 +306,21 @@ function App() {
 
   const monthNames = ["January","February","March","April","May","June","July","August","September","October","November","December"];
 
+  // Tracking: which sections the visitor actually sees (40%+ on screen)
+  useEffect(() => {
+    if (!('IntersectionObserver' in window)) return;
+    const io = new IntersectionObserver((entries) => {
+      entries.forEach(en => {
+        if (en.isIntersecting) trackSectionView(en.target.id || (en.target.classList.contains('hero') ? 'hero' : null));
+      });
+    }, { threshold: 0.4 });
+    document.querySelectorAll('section').forEach(el => io.observe(el));
+    return () => io.disconnect();
+  }, []);
+
+  // Tracking: dates picked in the booking calendar
+  useEffect(() => { trackDates(checkIn, checkOut, guestCount); }, [checkIn, checkOut, guestCount]);
+
   // Navbar scroll effect
   useEffect(() => {
     const onScroll = () => setNavScrolled(window.scrollY > 40);
@@ -259,7 +339,7 @@ function App() {
     `${ASSET_BASE}exterior.png`, `${ASSET_BASE}bedroom.png`, `${ASSET_BASE}nature.png`, `${ASSET_BASE}lounge.png`
   ];
 
-  const openLightbox = (idx) => { setLightboxIndex(idx); setLightboxOpen(true); };
+  const openLightbox = (idx) => { setLightboxIndex(idx); setLightboxOpen(true); trackPhotoOpen(); };
   const closeLightbox = () => setLightboxOpen(false);
   const nextPhoto = () => setLightboxIndex(i => (i + 1) % allImages.length);
   const prevPhoto = () => setLightboxIndex(i => (i - 1 + allImages.length) % allImages.length);
@@ -334,6 +414,7 @@ function App() {
         })
       });
       setAvailabilityStatus('request-sent');
+      trackBookingRequest();
     } catch {
       setAvailabilityStatus('request-sent');
     }

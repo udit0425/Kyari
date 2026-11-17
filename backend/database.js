@@ -117,13 +117,38 @@ export const initDb = async () => {
     )
   `);
 
+  await dbRun(`
+    CREATE TABLE IF NOT EXISTS page_views (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      visitor_id TEXT,
+      session_id TEXT,
+      ip TEXT,
+      user_agent TEXT,
+      device_type TEXT,
+      os TEXT,
+      browser TEXT,
+      page_url TEXT,
+      referrer TEXT,
+      utm_source TEXT,
+      utm_medium TEXT,
+      utm_campaign TEXT,
+      language TEXT,
+      timezone TEXT,
+      created_at TEXT NOT NULL
+    )
+  `);
+  await dbRun('CREATE INDEX IF NOT EXISTS idx_page_views_visitor ON page_views (visitor_id)');
+
   // Migrate contact_clicks: add visitor/context columns if missing
   const clickCols = [
     'visitor_id', 'session_id', 'ip', 'user_agent', 'device_type', 'browser', 'os',
     'page_url', 'landing_page', 'referrer',
     'utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content', 'gclid', 'fbclid',
     'screen', 'viewport', 'language', 'timezone', 'country', 'region', 'city',
-    'time_on_page_sec INTEGER', 'scroll_depth_pct INTEGER', 'visit_number INTEGER'
+    'time_on_page_sec INTEGER', 'scroll_depth_pct INTEGER', 'visit_number INTEGER',
+    'isp', 'postal', 'dark_mode', 'connection', 'touch',
+    'sections_viewed', 'dates_checked', 'guests_selected INTEGER', 'photos_opened INTEGER',
+    'booking_request_sent INTEGER', 'visits_count INTEGER', 'first_seen_at'
   ];
   const existing = (await dbAll('PRAGMA table_info(contact_clicks)')).map(c => c.name);
   for (const col of clickCols) {

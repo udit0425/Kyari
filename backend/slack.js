@@ -117,8 +117,15 @@ export const sendSlackClickAlert = async (click) => {
   const timestamp = new Date(click.created_at || Date.now()).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
   const location = [click.city, click.region, click.country].filter(Boolean).join(', ');
   const visitor = click.visitor_id
-    ? `${click.visit_number > 1 ? `Returning (click #${click.visit_number})` : 'New'} · \`${click.visitor_id.slice(0, 8)}\``
+    ? `\`${click.visitor_id.slice(0, 8)}\` · ${click.visit_number > 1 ? `click #${click.visit_number}` : 'first click'}`
     : 'Unknown';
+
+  const parse = (v) => { try { return JSON.parse(v || '[]'); } catch { return []; } };
+  const sections = parse(click.sections_viewed);
+  const dates = parse(click.dates_checked);
+  const visitsText = click.visits_count > 1
+    ? `${click.visits_count} visits${click.first_seen_at ? ` (first: ${new Date(click.first_seen_at).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' })})` : ''}`
+    : 'First visit';
 
   const fields = [
     { type: 'mrkdwn', text: `*Button:*\n${click.source || 'Website'}` },
@@ -128,19 +135,38 @@ export const sendSlackClickAlert = async (click) => {
     { type: 'mrkdwn', text: `*Visitor:*\n${visitor}` },
     { type: 'mrkdwn', text: `*Engagement:*\n${click.time_on_page_sec ?? '?'}s on page · ${click.scroll_depth_pct ?? '?'}% scrolled` }
   ];
-  if (location) fields.push({ type: 'mrkdwn', text: `*Location:*\n${location}` });
+  if (location) fields.push({ type: 'mrkdwn', text: `*Location:*\n${location}${click.postal ? ` ${click.postal}` : ''}` });
+  if (click.isp) fields.push({ type: 'mrkdwn', text: `*Network:*\n${click.isp}` });
+  fields.push({ type: 'mrkdwn', text: `*Visits:*\n${visitsText}` });
   if (click.timezone || click.language) {
     fields.push({ type: 'mrkdwn', text: `*Locale:*\n${[click.timezone, click.language].filter(Boolean).join(' · ')}` });
   }
+
+  const journeyLines = [
+    `*Sections viewed:* ${sections.length ? sections.join(' → ') : '—'}`,
+    `*Dates checked:* ${dates.length ? dates.join(', ') : '—'}${click.guests_selected && dates.length ? ` · ${click.guests_selected} guests` : ''}`,
+    `*Photos opened:* ${click.photos_opened || 0}${click.booking_request_sent ? ' · ✅ Sent booking request' : ''}`
+  ];
+  const extras = [
+    click.connection && `Network: ${click.connection}`,
+    click.dark_mode && `Dark mode: ${click.dark_mode}`,
+    click.touch && `Touch: ${click.touch}`,
+    click.screen && `Screen: ${click.screen}`
+  ].filter(Boolean).join(' · ');
 
   const payload = {
     text: `${icon} Guest clicked ${actionText} on malbagadh.in (${click.source || 'Website'})`,
     blocks: [
       { type: 'header', text: { type: 'plain_text', text: `${icon} Website Lead Alert: ${actionText}`, emoji: true } },
       { type: 'section', fields: fields.slice(0, 10) },
-      ...(click.page_url
-        ? [{ type: 'context', elements: [{ type: 'mrkdwn', text: `Page: ${click.page_url}${click.ip ? ` · IP: ${click.ip}` : ''}` }] }]
-        : [])
+      { type: 'section', text: { type: 'mrkdwn', text: journeyLines.join('\n') } },
+      {
+        type: 'context',
+        elements: [{
+          type: 'mrkdwn',
+          text: [click.page_url && `Page: ${click.page_url}`, click.ip && `IP: ${click.ip}`, extras].filter(Boolean).join(' · ') || '—'
+        }]
+      }
     ]
   };
 

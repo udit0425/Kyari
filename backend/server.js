@@ -147,6 +147,55 @@ const parseUserAgent = (ua = '') => {
 
 const clip = (v, n = 500) => (v == null || v === '' ? null : String(v).slice(0, n));
 
+// IP -> city / region / ISP via ipinfo.io (free tier, no key needed; set IPINFO_TOKEN for higher limits).
+// Cached in memory so repeat visitors don't trigger repeat lookups.
+const geoCache = new Map();
+const lookupIp = async (ip) => {
+  if (!ip || /^(127\.|10\.|192\.168\.|::1|::ffff:127\.)/.test(ip)) return {};
+  if (geoCache.has(ip)) return geoCache.get(ip);
+  try {
+    const token = process.env.IPINFO_TOKEN ? `?token=${process.env.IPINFO_TOKEN}` : '';
+    const res = await fetch(`https://ipinfo.io/${encodeURIComponent(ip)}/json${token}`, { signal: AbortSignal.timeout(2500) });
+    if (!res.ok) return {};
+    const d = await res.json();
+    const geo = {
+      city: d.city || null,
+      region: d.region || null,
+      country: d.country || null,
+      postal: d.postal || null,
+      isp: d.org ? d.org.replace(/^AS\d+\s*/, '') : null
+    };
+    if (geoCache.size > 5000) geoCache.clear();
+    geoCache.set(ip, geo);
+    return geo;
+  } catch {
+    return {};
+  }
+};
+
+const asList = (v, max = 20) => (Array.isArray(v) ? v.slice(0, max).map(x => String(x).slice(0, 60)) : []);
+
+// Record a page view (one per page load) — lets us count visits before a click
+app.post('/api/track-pageview', async (req, res) => {
+  const b = req.body || {};
+  const userAgent = req.get('user-agent') || '';
+  const { device_type, os, browser } = parseUserAgent(userAgent);
+  try {
+    await dbRun(
+      `INSERT INTO page_views (visitor_id, session_id, ip, user_agent, device_type, os, browser, page_url, referrer,
+        utm_source, utm_medium, utm_campaign, language, timezone, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [clip(b.visitor_id, 64), clip(b.session_id, 64), req.ip, clip(userAgent), device_type, os, browser,
+        clip(b.page_url), clip(b.referrer), clip(b.utm_source, 100), clip(b.utm_medium, 100), clip(b.utm_campaign, 100),
+        clip(b.language, 20), clip(b.timezone, 50), new Date().toISOString()]
+    );
+    res.json({ success: true });
+  } catch (err) {
+    console.error('[Page View] Database error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Track clicks on Call / WhatsApp buttons and notify on Slack
 app.post('/api/track-click', async (req, res) => {
   const b = req.body || {};
@@ -180,6 +229,14 @@ app.post('/api/track-click', async (req, res) => {
     country: clip(req.get('cf-ipcountry'), 10),
     region: clip(req.get('cf-region'), 100),
     city: clip(req.get('cf-ipcity'), 100),
+    dark_mode: clip(b.dark_mode, 5),
+    connection: clip(b.connection, 30),
+    touch: clip(b.touch, 5),
+    sections_viewed: JSON.stringify(asList(b.sections_viewed)),
+    dates_checked: JSON.stringify(asList(b.dates_checked, 10)),
+    guests_selected: Number.isFinite(b.guests_selected) ? b.guests_selected : null,
+    photos_opened: Number.isFinite(b.photos_opened) ? b.photos_opened : 0,
+    booking_request_sent: b.booking_request_sent ? 1 : 0,
     time_on_page_sec: Number.isFinite(b.time_on_page_sec) ? b.time_on_page_sec : null,
     scroll_depth_pct: Number.isFinite(b.scroll_depth_pct) ? Math.min(100, b.scroll_depth_pct) : null,
     created_at: timestamp
@@ -190,6 +247,23 @@ app.post('/api/track-click', async (req, res) => {
       ? await dbGet('SELECT COUNT(*) AS n FROM contact_clicks WHERE visitor_id = ?', [click.visitor_id])
       : { n: 0 };
     click.visit_number = (prior?.n || 0) + 1;
+
+    if (click.visitor_id) {
+      const visits = await dbGet(
+        'SELECT COUNT(DISTINCT session_id) AS n, MIN(created_at) AS first FROM page_views WHERE visitor_id = ?',
+        [click.visitor_id]
+      );
+      click.visits_count = visits?.n || 1;
+      click.first_seen_at = visits?.first || null;
+    }
+
+    // Fill location from IP if Cloudflare headers didn't provide it
+    const geo = await lookupIp(click.ip);
+    click.city = click.city || geo.city || null;
+    click.region = click.region || geo.region || null;
+    click.country = click.country || geo.country || null;
+    click.postal = geo.postal || null;
+    click.isp = geo.isp || null;
 
     const cols = Object.keys(click);
     await dbRun(
