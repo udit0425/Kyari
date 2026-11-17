@@ -85,3 +85,44 @@ export const sendSlackBookingAlert = async ({ check_in, check_out, guest_phone, 
     return { success: false, error: err.message };
   }
 };
+
+export const sendSlackClickAlert = async ({ type, source }) => {
+  const webhookUrl = getWebhookUrl();
+  if (!webhookUrl) return { success: false, error: 'Slack webhook not configured' };
+
+  const isCall = type === 'call';
+  const icon = isCall ? '📞' : '💬';
+  const actionText = isCall ? 'Phone Call Click' : 'WhatsApp Click';
+  const timestamp = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
+
+  const payload = {
+    text: `${icon} Guest clicked *${actionText}* on malbagadh.in`,
+    blocks: [
+      {
+        type: 'header',
+        text: { type: 'plain_text', text: `${icon} Website Lead Alert: ${actionText}`, emoji: true }
+      },
+      {
+        type: 'section',
+        fields: [
+          { type: 'mrkdwn', text: `*Action:*\n${actionText}` },
+          { type: 'mrkdwn', text: `*Location:*\n${source || 'Website'}` },
+          { type: 'mrkdwn', text: `*Time:*\n${timestamp} IST` }
+        ]
+      }
+    ]
+  };
+
+  try {
+    const res = await fetch(webhookUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    return { success: res.ok };
+  } catch (err) {
+    console.error('[Slack] Click alert failed:', err.message);
+    return { success: false, error: err.message };
+  }
+};
+

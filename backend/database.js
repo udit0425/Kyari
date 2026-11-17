@@ -108,6 +108,15 @@ export const initDb = async () => {
     )
   `);
 
+  await dbRun(`
+    CREATE TABLE IF NOT EXISTS contact_clicks (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      type TEXT NOT NULL,
+      source TEXT,
+      created_at TEXT NOT NULL
+    )
+  `);
+
   // Check if seeded
   const bookingsCount = await dbGet('SELECT COUNT(*) as count FROM bookings');
   if (bookingsCount.count === 0) {

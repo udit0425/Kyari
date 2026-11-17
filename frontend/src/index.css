@@ -1043,12 +1043,15 @@ h1, h2, h3, h4, .font-serif {
     font-size: 1.85rem;
   }
 
-  /* Floating WhatsApp button — nudge up on mobile so it doesn't cover content */
-  .floating-wa {
+  /* Floating contact buttons container on mobile */
+  .floating-contact-container {
     bottom: 20px !important;
     right: 16px !important;
-    width: 50px !important;
-    height: 50px !important;
+    gap: 10px !important;
+  }
+  .floating-contact-container .floating-btn {
+    width: 48px !important;
+    height: 48px !important;
   }
 }
 

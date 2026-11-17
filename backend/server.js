@@ -5,7 +5,7 @@ import { fileURLToPath } from 'url';
 import { initDb, dbAll, dbRun } from './database.js';
 import { runCrawl } from './scraper.js';
 
-import { sendSlackBookingAlert } from './slack.js';
+import { sendSlackBookingAlert, sendSlackClickAlert } from './slack.js';
 
 const app = express();
 const PORT = process.env.PORT || 5001;
@@ -121,6 +121,29 @@ app.get('/api/booking-requests', async (req, res) => {
     res.json(requests);
   } catch (error) {
     res.status(500).json({ error: error.message });
+  }
+});
+
+// Track clicks on Call / WhatsApp buttons and notify on Slack
+app.post('/api/track-click', async (req, res) => {
+  const { type, source } = req.body;
+  const timestamp = new Date().toISOString();
+
+  try {
+    await dbRun(
+      'INSERT INTO contact_clicks (type, source, created_at) VALUES (?, ?, ?)',
+      [type || 'unknown', source || 'unknown', timestamp]
+    );
+
+    // Send background Slack notification
+    sendSlackClickAlert({ type, source }).catch(err => {
+      console.error('[Track Click] Slack notification error:', err.message);
+    });
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error('[Track Click] Database error:', err.message);
+    res.status(500).json({ error: err.message });
   }
 });
 

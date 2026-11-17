@@ -24,7 +24,21 @@ import {
 
 const API_BASE = 'https://api.malbagadh.in/api';
 const ASSET_BASE = import.meta.env.BASE_URL + 'assets/';
-const WA_NUMBER = '919989750728';
+const PHONE_NUMBER_RAW = '9837056370';
+const PHONE_DISPLAY = '+91 98370 56370';
+const WA_NUMBER = '919837056370';
+
+const trackContactClick = (type, source) => {
+  try {
+    fetch(`${API_BASE}/track-click`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type, source })
+    }).catch(() => {});
+  } catch (err) {
+    // ignore
+  }
+};
 
 /* ─────────────────── Icon helpers ─────────────────── */
 const WhatsAppIcon = ({ size = 20 }) => (
@@ -39,36 +53,69 @@ const InstagramIcon = ({ size = 20 }) => (
   </svg>
 );
 
-/* ─────────────────── Floating WhatsApp button ─────────────────── */
-const FloatingWhatsApp = () => (
-  <a
-    href={`https://wa.me/${WA_NUMBER}?text=Hi%2C%20I%27d%20like%20to%20enquire%20about%20a%20stay%20at%20Malbagadh%20Homestay.`}
-    target="_blank"
-    rel="noopener noreferrer"
-    aria-label="Chat on WhatsApp"
-    className="floating-wa"
+/* ─────────────────── Floating Contact Action Buttons (Call & WA) ─────────────────── */
+const FloatingContactButtons = () => (
+  <div
+    className="floating-contact-container"
     style={{
       position: 'fixed',
       bottom: '28px',
       right: '28px',
-      width: '56px',
-      height: '56px',
-      borderRadius: '50%',
-      background: '#25D366',
-      color: '#fff',
       display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      boxShadow: '0 4px 20px rgba(37,211,102,0.45)',
-      zIndex: 9999,
-      textDecoration: 'none',
-      transition: 'transform 0.2s ease, box-shadow 0.2s ease'
+      flexDirection: 'column',
+      gap: '12px',
+      zIndex: 9999
     }}
-    onMouseEnter={e => { e.currentTarget.style.transform = 'scale(1.1)'; e.currentTarget.style.boxShadow = '0 6px 28px rgba(37,211,102,0.6)'; }}
-    onMouseLeave={e => { e.currentTarget.style.transform = 'scale(1)'; e.currentTarget.style.boxShadow = '0 4px 20px rgba(37,211,102,0.45)'; }}
   >
-    <WhatsAppIcon size={26} />
-  </a>
+    <a
+      href={`tel:+91${PHONE_NUMBER_RAW}`}
+      onClick={() => trackContactClick('call', 'Floating Call Button')}
+      aria-label="Call Host"
+      className="floating-btn floating-call"
+      style={{
+        width: '54px',
+        height: '54px',
+        borderRadius: '50%',
+        background: '#1F3D2B',
+        color: '#fff',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        boxShadow: '0 4px 18px rgba(31,61,43,0.45)',
+        textDecoration: 'none',
+        transition: 'transform 0.2s ease, box-shadow 0.2s ease'
+      }}
+      onMouseEnter={e => { e.currentTarget.style.transform = 'scale(1.1)'; e.currentTarget.style.boxShadow = '0 6px 24px rgba(31,61,43,0.6)'; }}
+      onMouseLeave={e => { e.currentTarget.style.transform = 'scale(1)'; e.currentTarget.style.boxShadow = '0 4px 18px rgba(31,61,43,0.45)'; }}
+    >
+      <Phone size={22} />
+    </a>
+    <a
+      href={`https://wa.me/${WA_NUMBER}?text=Hi%2C%20I%27d%20like%20to%20enquire%20about%20a%20stay%20at%20Malbagadh%20Homestay.`}
+      onClick={() => trackContactClick('whatsapp', 'Floating WhatsApp Button')}
+      target="_blank"
+      rel="noopener noreferrer"
+      aria-label="Chat on WhatsApp"
+      className="floating-btn floating-wa"
+      style={{
+        width: '54px',
+        height: '54px',
+        borderRadius: '50%',
+        background: '#25D366',
+        color: '#fff',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        boxShadow: '0 4px 20px rgba(37,211,102,0.45)',
+        textDecoration: 'none',
+        transition: 'transform 0.2s ease, box-shadow 0.2s ease'
+      }}
+      onMouseEnter={e => { e.currentTarget.style.transform = 'scale(1.1)'; e.currentTarget.style.boxShadow = '0 6px 28px rgba(37,211,102,0.6)'; }}
+      onMouseLeave={e => { e.currentTarget.style.transform = 'scale(1)'; e.currentTarget.style.boxShadow = '0 4px 20px rgba(37,211,102,0.45)'; }}
+    >
+      <WhatsAppIcon size={26} />
+    </a>
+  </div>
 );
 
 /* ─────────────────── Main App ─────────────────── */
@@ -298,7 +345,7 @@ function App() {
   /* ─────────────────── JSX ─────────────────── */
   return (
     <div>
-      <FloatingWhatsApp />
+      <FloatingContactButtons />
 
       {/* ── Navigation ── */}
       <nav className="navbar" id="main-nav" style={{
@@ -324,11 +371,24 @@ function App() {
             <li><a href="#booking" className="nav-link-item" style={{ color: navScrolled ? 'var(--text-dark)' : 'rgba(255,255,255,0.9)' }}>Book a Stay</a></li>
             <li><a href="#reviews" className="nav-link-item" style={{ color: navScrolled ? 'var(--text-dark)' : 'rgba(255,255,255,0.9)' }}>Guest Reviews</a></li>
           </ul>
-          <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+          <div style={{ display: 'flex', gap: '14px', alignItems: 'center' }}>
+            <a
+              href={`tel:+91${PHONE_NUMBER_RAW}`}
+              onClick={() => trackContactClick('call', 'Navbar Call Icon')}
+              aria-label="Call Us"
+              title={`Call ${PHONE_DISPLAY}`}
+              style={{ color: navScrolled ? 'var(--primary-deep)' : '#fff', display: 'flex', alignItems: 'center', transition: 'transform 0.2s' }}
+              onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.15)'}
+              onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}
+            >
+              <Phone size={19} />
+            </a>
             <a
               href={`https://wa.me/${WA_NUMBER}?text=Hi%2C%20I%27d%20like%20to%20enquire%20about%20Malbagadh%20Homestay.`}
+              onClick={() => trackContactClick('whatsapp', 'Navbar WhatsApp Icon')}
               target="_blank" rel="noopener noreferrer"
               aria-label="WhatsApp"
+              title="Chat on WhatsApp"
               style={{ color: '#25D366', display: 'flex', alignItems: 'center', transition: 'transform 0.2s' }}
               onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.15)'}
               onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}
@@ -373,7 +433,23 @@ function App() {
           <a href="#gallery" onClick={() => setMobileMenuOpen(false)}>Gallery</a>
           <a href="#booking" onClick={() => setMobileMenuOpen(false)}>Book a Stay</a>
           <a href="#reviews" onClick={() => setMobileMenuOpen(false)}>Guest Reviews</a>
-          <a href={`https://wa.me/${WA_NUMBER}`} target="_blank" rel="noopener noreferrer" style={{ color: '#25D366', marginTop: '8px' }}>📲 WhatsApp Us</a>
+          <div style={{ marginTop: '16px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            <a
+              href={`tel:+91${PHONE_NUMBER_RAW}`}
+              onClick={() => { trackContactClick('call', 'Mobile Menu Call'); setMobileMenuOpen(false); }}
+              style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--primary-deep)', fontWeight: 600 }}
+            >
+              <Phone size={18} /> Call: {PHONE_DISPLAY}
+            </a>
+            <a
+              href={`https://wa.me/${WA_NUMBER}?text=Hi%2C%20I%27d%20like%20to%20enquire%20about%20Malbagadh%20Homestay.`}
+              onClick={() => { trackContactClick('whatsapp', 'Mobile Menu WhatsApp'); setMobileMenuOpen(false); }}
+              target="_blank" rel="noopener noreferrer"
+              style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#25D366', fontWeight: 600 }}
+            >
+              <WhatsAppIcon size={18} /> WhatsApp Us
+            </a>
+          </div>
         </div>
       </div>
 
@@ -1144,8 +1220,22 @@ function App() {
               <h4 style={{ marginBottom: '16px' }}>Contact Us</h4>
               <ul className="footer-links" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                 <li>
-                  <a href={`https://wa.me/${WA_NUMBER}?text=Hi%2C%20I'd%20like%20to%20enquire%20about%20Malbagadh%20Homestay.`} target="_blank" rel="noopener noreferrer" style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#25D366' }}>
-                    <WhatsAppIcon size={16} /> +91 99897 50728
+                  <a
+                    href={`tel:+91${PHONE_NUMBER_RAW}`}
+                    onClick={() => trackContactClick('call', 'Footer Call Link')}
+                    style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#fff', textDecoration: 'none' }}
+                  >
+                    <Phone size={16} style={{ color: 'var(--secondary-accent)' }} /> {PHONE_DISPLAY}
+                  </a>
+                </li>
+                <li>
+                  <a
+                    href={`https://wa.me/${WA_NUMBER}?text=Hi%2C%20I'd%20like%20to%20enquire%20about%20Malbagadh%20Homestay.`}
+                    onClick={() => trackContactClick('whatsapp', 'Footer WhatsApp Link')}
+                    target="_blank" rel="noopener noreferrer"
+                    style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#25D366' }}
+                  >
+                    <WhatsAppIcon size={16} /> WhatsApp: {PHONE_DISPLAY}
                   </a>
                 </li>
                 <li>
