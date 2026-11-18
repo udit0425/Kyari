@@ -142,7 +142,7 @@ router.get('/', (req, res) => {
   if (!isLoggedIn(req)) return res.type('html').send(renderLoginPage('', req.originalUrl));
   res.type('html').send(renderAdminPage({
     emailConfigured: isEmailConfigured(), templates: TEMPLATES, loginRequired: LOGIN_REQUIRED,
-    defaults: { from_email: getDefaultFrom(), reply_to: getDefaultReplyTo() }
+    defaults: { from_email: getDefaultFrom(), reply_to: getDefaultReplyTo(), gmail_account: getSetting('gmail_account') || '' }
   }));
 });
 
@@ -163,6 +163,7 @@ const settingsView = () => ({
   default_reply_to: getDefaultReplyTo(),
   upi_id: getUpiId(),
   upi_payee_name: getUpiName(),
+  gmail_account: getSetting('gmail_account') || '',
   password_from_env: Boolean(envPassword()),
   login_required: LOGIN_REQUIRED
 });
@@ -186,6 +187,11 @@ api.post('/settings', async (req, res) => {
       const v = b.upi_id.trim();
       if (v && !/^[A-Za-z0-9._-]{2,256}@[A-Za-z0-9.-]{2,64}$/.test(v)) return res.status(400).json({ error: 'UPI ID looks wrong (e.g. 9105056370@pthdfc)' });
       await setSetting('upi_id', v || null);
+    }
+    if (typeof b.gmail_account === 'string') {
+      const v = b.gmail_account.trim().toLowerCase();
+      if (v && !EMAIL_RE.test(v)) return res.status(400).json({ error: 'Gmail account is not a valid email' });
+      await setSetting('gmail_account', v || null);
     }
     if (typeof b.upi_payee_name === 'string') await setSetting('upi_payee_name', b.upi_payee_name.trim().slice(0, 50) || null);
     if (typeof b.default_reply_to === 'string') {

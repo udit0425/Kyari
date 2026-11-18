@@ -193,7 +193,10 @@ export const renderAdminPage = ({ emailConfigured, templates, defaults = {}, log
 
   <section id="tab-settings" class="settings" hidden>
     <div class="card grid">
-      <div class="full section-label" style="margin-top:0">UPI payments</div>
+      <div class="full section-label" style="margin-top:0">Gmail</div>
+      <div class="full"><label for="s_gmail">Send from this Gmail account</label><input id="s_gmail" type="email" autocomplete="off" placeholder="info.malbagadh@gmail.com">
+        <div class="muted" style="font-size:13px;margin-top:4px">“Open in Gmail” always opens this account (sign in to it once in this browser). On phones, pick it in the Gmail app’s From field.</div></div>
+      <div class="full section-label">UPI payments</div>
       <div><label for="s_upi">UPI ID</label><input id="s_upi" autocomplete="off" placeholder="9105056370@pthdfc"></div>
       <div><label for="s_upi_name">Payee name</label><input id="s_upi_name" autocomplete="off" placeholder="Kyari"></div>
       <div class="full section-label">Direct sending via Resend (optional)</div>
@@ -354,7 +357,9 @@ const openGmail = (to, subject, body) => {
   } else if (isMobile) {
     location.href = 'mailto:' + enc(to) + '?subject=' + enc(subject) + b; // Android → Gmail app
   } else {
-    window.open('https://mail.google.com/mail/?view=cm&fs=1&to=' + enc(to) + '&su=' + enc(subject) + (body ? '&body=' + enc(body) : ''), '_blank');
+    // /mail/u/<email>/ makes Gmail open that account even when several are signed in
+    const acct = (DEFAULTS.gmail_account || '').trim();
+    window.open('https://mail.google.com/mail/' + (acct ? 'u/' + acct.replace(/[^A-Za-z0-9.@+_-]/g, '') + '/' : '') + '?view=cm&fs=1&to=' + enc(to) + '&su=' + enc(subject) + (body ? '&body=' + enc(body) : ''), '_blank');
   }
 };
 
@@ -502,6 +507,7 @@ const showSettings = (s) => {
   $('s_remove').hidden = !s.resend_key_set || s.resend_key_from_env;
   $('s_from').value = s.default_from_email || '';
   $('s_reply').value = s.default_reply_to || '';
+  $('s_gmail').value = s.gmail_account || ''; DEFAULTS.gmail_account = s.gmail_account || '';
   $('s_upi').value = s.upi_id || ''; $('s_upi_name').value = s.upi_payee_name || '';
   $('pw_card').hidden = s.password_from_env || !s.login_required;
   RESEND_ON = s.resend_key_set; syncResend(); setButtons();
@@ -513,7 +519,7 @@ const loadSettings = async () => {
 const saveSettings = async (extra) => {
   $('s_msg').className = 'msg'; $('s_msg').textContent = 'Saving…';
   try {
-    const r = await api('/settings', { resend_api_key: $('s_key').value, default_from_email: $('s_from').value, default_reply_to: $('s_reply').value, upi_id: $('s_upi').value, upi_payee_name: $('s_upi_name').value, ...extra });
+    const r = await api('/settings', { resend_api_key: $('s_key').value, default_from_email: $('s_from').value, default_reply_to: $('s_reply').value, gmail_account: $('s_gmail').value, upi_id: $('s_upi').value, upi_payee_name: $('s_upi_name').value, ...extra });
     showSettings(r.settings);
     // New defaults apply to the compose form too
     try { localStorage.removeItem('mb_sender'); } catch {}
