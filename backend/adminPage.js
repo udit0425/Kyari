@@ -95,6 +95,8 @@ export const renderAdminPage = ({ emailConfigured, templates, defaults = {}, log
   .muted { color:var(--muted); }
   .table-wrap { overflow-x:auto; }
   .settings { max-width:640px; display:grid; gap:16px; }
+  .guests { display:grid; grid-template-columns:repeat(3, 1fr); gap:12px; }
+  .upi-box { background:var(--bg); border:1px dashed var(--line); border-radius:8px; padding:9px 10px; font-size:12px; word-break:break-all; color:var(--muted); }
   .actions { white-space:nowrap; display:flex; gap:6px; }
   [hidden] { display:none !important; }
   @media (max-width:860px) { .compose { grid-template-columns:1fr; } .preview { position:static; } iframe { height:60vh; } }
@@ -135,7 +137,11 @@ export const renderAdminPage = ({ emailConfigured, templates, defaults = {}, log
       <div><label for="booking_ref">Booking ID</label><input id="booking_ref" autocomplete="off"></div>
       <div><label for="check_in">Check-in *</label><input id="check_in" type="date"></div>
       <div><label for="check_out">Check-out *</label><input id="check_out" type="date"></div>
-      <div><label for="guests">Number of guests *</label><input id="guests" type="number" min="1"></div>
+      <div class="full guests">
+        <div><label for="adults">Adults *</label><input id="adults" type="number" min="1" inputmode="numeric"></div>
+        <div><label for="children">Children</label><input id="children" type="number" min="0" inputmode="numeric" placeholder="0"></div>
+        <div><label for="staff">Staff</label><input id="staff" type="number" min="0" inputmode="numeric" placeholder="0" title="Drivers / helpers travelling with the guests"></div>
+      </div>
 
       <div class="full section-label">Payment</div>
       <div><label for="amount" id="amount_label">Amount (₹)</label><input id="amount" type="number" min="0" step="1" inputmode="decimal"></div>
@@ -143,7 +149,14 @@ export const renderAdminPage = ({ emailConfigured, templates, defaults = {}, log
       <div data-for="payment_received"><label for="payment_mode">Payment mode</label>
         <select id="payment_mode"><option>UPI</option><option>Bank transfer</option><option>Cash</option><option>Card</option><option value="">—</option></select>
       </div>
-      <div class="full" data-for="booking_received"><label for="payment_link">Payment link (UPI / gateway URL)</label><input id="payment_link" type="url" placeholder="https://… or upi://…"></div>
+      <div class="full" data-for="booking_received">
+        <label>UPI payment request <span class="muted">(made automatically from amount + booking ID)</span></label>
+        <div class="upi-box"><code id="upi_link">Enter the amount to create the payment request</code></div>
+        <div class="sendbar" style="margin-top:8px">
+          <button type="button" class="btn ghost small" id="copy_upi" disabled>Copy UPI link</button>
+          <a class="btn ghost small" id="open_pay" target="_blank" rel="noopener" hidden>Open pay page</a>
+        </div>
+      </div>
 
       <div class="full"><label for="note">Personal note (optional)</label><textarea id="note" rows="3" placeholder="Added under the greeting, e.g. directions or check-in time"></textarea></div>
     </div>
@@ -177,6 +190,9 @@ export const renderAdminPage = ({ emailConfigured, templates, defaults = {}, log
 
   <section id="tab-settings" class="settings" hidden>
     <div class="card grid">
+      <div class="full section-label" style="margin-top:0">UPI payments</div>
+      <div><label for="s_upi">UPI ID</label><input id="s_upi" autocomplete="off" placeholder="9105056370@pthdfc"></div>
+      <div><label for="s_upi_name">Payee name</label><input id="s_upi_name" autocomplete="off" placeholder="Kyari"></div>
       <div class="full section-label">Direct sending via Resend (optional)</div>
       <div class="full">
         <label for="s_key">Resend API key</label>
@@ -211,7 +227,7 @@ let RESEND_ON = ${emailConfigured ? 'true' : 'false'};
 const syncResend = () => document.querySelectorAll('[data-resend-only]').forEach((el) => { el.hidden = !RESEND_ON; });
 const DEFAULTS =${JSON.stringify(defaults).replace(/</g, '\\u003c')};
 const SENDER_FIELDS = ['from_email', 'reply_to'];
-const FIELDS = ['from_email', 'reply_to', 'guest_name', 'guest_email', 'booking_ref', 'guests', 'check_in', 'check_out', 'amount', 'total', 'payment_mode', 'payment_link', 'note'];
+const FIELDS = ['from_email', 'reply_to', 'guest_name', 'guest_email', 'booking_ref', 'adults', 'children', 'staff', 'check_in', 'check_out', 'amount', 'total', 'payment_mode', 'note'];
 const $ = (id) => document.getElementById(id);
 const escHtml = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 let bookings = [];
@@ -227,7 +243,10 @@ const api = async (path, body) => {
 };
 
 const formData = () => Object.fromEntries(FIELDS.map((f) => [f, $(f).value]));
-const setForm = (d) => FIELDS.forEach((f) => { if (d[f] !== undefined && d[f] !== null) $(f).value = d[f]; });
+const setForm = (d) => {
+  if (d.guests !== undefined && d.adults === undefined) d = { ...d, adults: d.guests }; // older entries had one guests number
+  FIELDS.forEach((f) => { if (d[f] !== undefined && d[f] !== null) $(f).value = d[f]; });
+};
 
 // Template-specific fields
 const syncTemplate = () => {
@@ -253,7 +272,7 @@ const missing = () => {
   if (!EMAIL_OK(d.guest_email)) return 'guest email';
   if (!d.check_in || !d.check_out) return 'check-in and check-out dates';
   if (d.check_out <= d.check_in) return 'a check-out date after check-in';
-  if (!(parseInt(d.guests, 10) > 0)) return 'number of guests';
+  if (!(parseInt(d.adults, 10) > 0)) return 'number of adults';
   if (!(parseFloat(d.amount) > 0)) return 'amount';
   return '';
 };
@@ -277,6 +296,10 @@ const refreshPreview = () => {
       lastPreview = await api('/preview', { template: $('template').value, data: formData() });
       $('subject').textContent = lastPreview.subject;
       $('frame').srcdoc = lastPreview.html;
+      $('upi_link').textContent = lastPreview.upi_link || 'Enter the amount to create the payment request';
+      $('copy_upi').disabled = !lastPreview.upi_link;
+      $('open_pay').hidden = !lastPreview.pay_url;
+      if (lastPreview.pay_url) $('open_pay').href = lastPreview.pay_url;
     } catch (e) { $('subject').textContent = e.message; }
     setButtons();
   }, 250);
@@ -320,6 +343,11 @@ $('mailapp').addEventListener('click', () => {
   logDraft('mail app');
 });
 
+$('copy_upi').addEventListener('click', async () => {
+  try { await navigator.clipboard.writeText(lastPreview.upi_link); $('copy_upi').textContent = 'Copied ✓'; setTimeout(() => { $('copy_upi').textContent = 'Copy UPI link'; }, 1500); }
+  catch { prompt('Copy UPI link:', lastPreview.upi_link); }
+});
+
 $('copyhtml').addEventListener('click', async () => {
   const { html, text } = lastPreview;
   try {
@@ -352,7 +380,7 @@ const loadBookings = async () => {
 const applyBooking = (key) => {
   const b = bookings.find((x) => x.key === key);
   if (!b) return;
-  setForm({ guest_name: b.guest_name, booking_ref: b.booking_ref, guests: b.guests, check_in: b.check_in, check_out: b.check_out, total: b.total || '' });
+  setForm({ guest_name: b.guest_name, booking_ref: b.booking_ref, adults: b.adults, children: '', staff: '', check_in: b.check_in, check_out: b.check_out, total: b.total || '' });
   refreshPreview();
 };
 
@@ -438,6 +466,7 @@ const showSettings = (s) => {
   $('s_remove').hidden = !s.resend_key_set || s.resend_key_from_env;
   $('s_from').value = s.default_from_email || '';
   $('s_reply').value = s.default_reply_to || '';
+  $('s_upi').value = s.upi_id || ''; $('s_upi_name').value = s.upi_payee_name || '';
   $('pw_card').hidden = s.password_from_env || !s.login_required;
   RESEND_ON = s.resend_key_set; syncResend(); setButtons();
   DEFAULTS.from_email = s.default_from_email; DEFAULTS.reply_to = s.default_reply_to;
@@ -448,7 +477,7 @@ const loadSettings = async () => {
 const saveSettings = async (extra) => {
   $('s_msg').className = 'msg'; $('s_msg').textContent = 'Saving…';
   try {
-    const r = await api('/settings', { resend_api_key: $('s_key').value, default_from_email: $('s_from').value, default_reply_to: $('s_reply').value, ...extra });
+    const r = await api('/settings', { resend_api_key: $('s_key').value, default_from_email: $('s_from').value, default_reply_to: $('s_reply').value, upi_id: $('s_upi').value, upi_payee_name: $('s_upi_name').value, ...extra });
     showSettings(r.settings);
     // New defaults apply to the compose form too
     try { localStorage.removeItem('mb_sender'); } catch {}

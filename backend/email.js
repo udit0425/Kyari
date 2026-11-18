@@ -22,7 +22,40 @@ const nightsBetween = (a, b) => {
   const n = Math.round((Date.parse(b) - Date.parse(a)) / 86400000);
   return Number.isFinite(n) && n > 0 ? n : 0;
 };
-const safeLink = (u) => (/^(https?:|upi:)/i.test(String(u || '').trim()) ? String(u).trim() : '');
+const count = (v) => { const n = parseInt(v, 10); return n > 0 ? n : 0; };
+const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+
+// "2 adults, 1 child, 1 staff" (older data with a single `guests` number counts as adults)
+export const describeGuests = (d = {}) => {
+  const adults = count(d.adults ?? d.guests), children = count(d.children), staff = count(d.staff);
+  return [adults && plural(adults, 'adult', 'adults'), children && plural(children, 'child', 'children'), staff && `${staff} staff`]
+    .filter(Boolean).join(', ');
+};
+
+// --- UPI payment requests ---
+const PUBLIC_BASE_URL = (process.env.PUBLIC_BASE_URL || 'https://api.malbagadh.in').replace(/\/$/, '');
+export const getUpiId = () => (getSetting('upi_id') || '9105056370@pthdfc').trim();
+export const getUpiName = () => (getSetting('upi_payee_name') || 'Kyari').trim();
+const cleanRef = (ref) => String(ref || '').replace(/[^A-Za-z0-9_-]/g, '').slice(0, 35);
+const cleanAmount = (a) => { const n = parseFloat(a); return Number.isFinite(n) && n > 0 ? String(Math.round(n * 100) / 100) : ''; };
+
+// upi://pay?pa=…&pn=Kyari&am=15000&cu=INR&tn=Kyari%20Booking%20KYR1025&tr=KYR1025
+export const buildUpiLink = ({ amount, ref }) => {
+  const pn = getUpiName(), r = cleanRef(ref), am = cleanAmount(amount);
+  const q = [`pa=${encodeURIComponent(getUpiId())}`, `pn=${encodeURIComponent(pn)}`];
+  if (am) q.push(`am=${am}`);
+  q.push('cu=INR');
+  if (r) q.push(`tn=${encodeURIComponent(`${pn} Booking ${r}`)}`, `tr=${encodeURIComponent(r)}`);
+  return `upi://pay?${q.join('&')}`;
+};
+
+// Gmail strips upi:// links, so emails link to our /pay page, which opens the UPI app (or shows a QR).
+export const buildPayPageUrl = ({ amount, ref }) => {
+  const q = new URLSearchParams();
+  if (cleanAmount(amount)) q.set('am', cleanAmount(amount));
+  if (cleanRef(ref)) q.set('tr', cleanRef(ref));
+  return `${PUBLIC_BASE_URL}/pay?${q.toString()}`;
+};
 
 // Emails are only ever sent manually from the admin Email Manager — never automatically.
 export const TEMPLATES = {
@@ -37,10 +70,10 @@ export const renderEmail = (template, d = {}) => {
   const name = String(d.guest_name || '').trim();
   const ref = String(d.booking_ref || '').trim();
   const nights = nightsBetween(d.check_in, d.check_out);
-  const guests = parseInt(d.guests, 10) > 0 ? parseInt(d.guests, 10) : null;
+  const guests = describeGuests(d);
   const amount = num(d.amount);
   const total = num(d.total);
-  const paymentLink = safeLink(d.payment_link);
+  const paymentLink = template === 'booking_received' && amount ? buildPayPageUrl({ amount, ref }) : '';
   const mode = String(d.payment_mode || '').trim();
   const note = String(d.note || '').trim();
   const isPayment = template === 'payment_received';
@@ -60,7 +93,7 @@ export const renderEmail = (template, d = {}) => {
   if (ref) rows.push(['Booking ID', ref]);
   if (d.check_in) rows.push(['Check-in', fmtDate(d.check_in)]);
   if (d.check_out) rows.push(['Check-out', `${fmtDate(d.check_out)}${nights ? ` (${nights} night${nights !== 1 ? 's' : ''})` : ''}`]);
-  if (guests) rows.push(['Guests', `${guests}`]);
+  if (guests) rows.push(['Guests', guests]);
   if (isPayment) {
     if (total) rows.push(['Total amount', inr(total)]);
     if (amount) rows.push(['Amount received', inr(amount)]);
@@ -71,6 +104,7 @@ export const renderEmail = (template, d = {}) => {
     }
   } else {
     if (amount) rows.push(['Amount payable', inr(amount)]);
+    rows.push(['UPI ID', getUpiId()]);
     rows.push(['Status', 'Payment pending']);
   }
 
@@ -82,7 +116,8 @@ export const renderEmail = (template, d = {}) => {
 
   const button = !isPayment && paymentLink
     ? `<tr><td align="center" style="padding:8px 0 24px;">
-         <a href="${esc(paymentLink)}" style="display:inline-block;background:#2f6b4f;color:#ffffff;text-decoration:none;font-weight:600;font-size:15px;padding:13px 28px;border-radius:8px;">Complete payment${amount ? ` · ${esc(inr(amount))}` : ''}</a>
+         <a href="${esc(paymentLink)}" style="display:inline-block;background:#2f6b4f;color:#ffffff;text-decoration:none;font-weight:600;font-size:15px;padding:13px 28px;border-radius:8px;">Pay ${esc(inr(amount))} via UPI</a>
+         <div style="font-size:12px;color:#6b756f;margin-top:8px;">Opens GPay / PhonePe / Paytm on your phone · or pay to UPI ID <b>${esc(getUpiId())}</b></div>
        </td></tr>`
     : '';
 
@@ -131,7 +166,7 @@ export const renderEmail = (template, d = {}) => {
     '',
     introText,
     ...(note ? ['', note] : []),
-    ...(!isPayment && paymentLink ? ['', `Pay here: ${paymentLink}`] : []),
+    ...(!isPayment && paymentLink ? ['', `Pay ${inr(amount)} via UPI (opens GPay / PhonePe / Paytm): ${paymentLink}`, `Or pay to UPI ID: ${getUpiId()}`] : []),
     '',
     'Booking summary:',
     ...rows.map(([k, v]) => `• ${k}: ${v}`),
@@ -143,7 +178,11 @@ export const renderEmail = (template, d = {}) => {
     SITE_URL
   ].join('\n');
 
-  return { subject, html, text };
+  return {
+    subject, html, text,
+    pay_url: paymentLink || null,
+    upi_link: paymentLink ? buildUpiLink({ amount, ref }) : null
+  };
 };
 
 // Settings come from the admin Settings tab (DB); env vars, if present, take priority.

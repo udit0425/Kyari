@@ -9,6 +9,7 @@ import crypto from 'crypto';
 import { sendSlackBookingAlert, sendSlackClickAlert } from './slack.js';
 import { renderPaymentConfirmPage } from './paymentConfirm.js';
 import adminRouter, { initAdmin } from './admin.js';
+import { renderPayPage } from './payPage.js';
 
 const app = express();
 const PORT = process.env.PORT || 5001;
@@ -144,6 +145,13 @@ app.get('/payment-confirm', async (req, res) => {
   res.set('Cache-Control', 'no-store');
   res.set('X-Robots-Tag', 'noindex');
   res.type('html').send(renderPaymentConfirmPage(booking));
+});
+
+// UPI payment landing page linked from "asking guest to pay" emails
+app.get('/pay', (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  res.set('X-Robots-Tag', 'noindex');
+  res.type('html').send(renderPayPage({ am: req.query.am, tr: req.query.tr }));
 });
 
 // Admin Email Manager (password-protected)

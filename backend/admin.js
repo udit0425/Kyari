@@ -7,7 +7,7 @@
 import express from 'express';
 import crypto from 'crypto';
 import { dbAll, dbGet, dbRun } from './database.js';
-import { renderEmail, sendEmail, isEmailConfigured, apiKeyHint, TEMPLATES, getDefaultFrom, getDefaultReplyTo } from './email.js';
+import { renderEmail, sendEmail, isEmailConfigured, apiKeyHint, TEMPLATES, getDefaultFrom, getDefaultReplyTo, getUpiId, getUpiName } from './email.js';
 import { renderAdminPage, renderLoginPage, renderSetupPage } from './adminPage.js';
 import { loadSettings, getSetting, setSetting } from './settings.js';
 
@@ -161,6 +161,8 @@ const settingsView = () => ({
   resend_key_from_env: Boolean(process.env.RESEND_API_KEY),
   default_from_email: getDefaultFrom(),
   default_reply_to: getDefaultReplyTo(),
+  upi_id: getUpiId(),
+  upi_payee_name: getUpiName(),
   password_from_env: Boolean(envPassword()),
   login_required: LOGIN_REQUIRED
 });
@@ -180,6 +182,12 @@ api.post('/settings', async (req, res) => {
       if (v && !EMAIL_RE.test(v)) return res.status(400).json({ error: 'Default From email is not valid' });
       await setSetting('default_from_email', v || null);
     }
+    if (typeof b.upi_id === 'string') {
+      const v = b.upi_id.trim();
+      if (v && !/^[A-Za-z0-9._-]{2,256}@[A-Za-z0-9.-]{2,64}$/.test(v)) return res.status(400).json({ error: 'UPI ID looks wrong (e.g. 9105056370@pthdfc)' });
+      await setSetting('upi_id', v || null);
+    }
+    if (typeof b.upi_payee_name === 'string') await setSetting('upi_payee_name', b.upi_payee_name.trim().slice(0, 50) || null);
     if (typeof b.default_reply_to === 'string') {
       const v = b.default_reply_to.trim();
       if (v && !EMAIL_RE.test(v)) return res.status(400).json({ error: 'Default Reply-to email is not valid' });
@@ -215,14 +223,14 @@ api.get('/bookings', async (req, res) => {
     ]);
     res.json([
       ...requests.map(r => ({
-        key: `req-${r.id}`, source: 'Website request', booking_ref: `MBR${r.id}`,
+        key: `req-${r.id}`, source: 'Website request', booking_ref: `KYR${r.id}`,
         guest_name: '', guest_phone: r.guest_phone, check_in: r.check_in, check_out: r.check_out,
-        guests: r.guest_count, total: null, status: r.status, created_at: r.created_at
+        adults: r.guest_count, total: null, status: r.status, created_at: r.created_at
       })),
       ...bookings.map(b => ({
-        key: `bk-${b.id}`, source: b.platform, booking_ref: `MB${b.id}`,
+        key: `bk-${b.id}`, source: b.platform, booking_ref: `KYRB${b.id}`,
         guest_name: b.guest_name || '', guest_phone: '', check_in: b.check_in, check_out: b.check_out,
-        guests: b.guest_count, total: b.total_price || null, status: b.status
+        adults: b.guest_count, total: b.total_price || null, status: b.status
       }))
     ]);
   } catch (error) {
@@ -252,7 +260,9 @@ const validate = (data, { requireFrom = true } = {}) => {
   if (data.reply_to && !EMAIL_RE.test(String(data.reply_to).trim())) return 'Reply-to email is not valid';
   if (!isDate(data.check_in) || !isDate(data.check_out)) return 'Enter check-in and check-out dates';
   if (Date.parse(data.check_out) <= Date.parse(data.check_in)) return 'Check-out must be after check-in';
-  if (!(parseInt(data.guests, 10) > 0)) return 'Enter the number of guests';
+  const n = (v) => parseInt(v, 10);
+  if (['adults', 'children', 'staff'].some((k) => data[k] !== undefined && data[k] !== '' && !(n(data[k]) >= 0))) return 'Guest numbers must be 0 or more';
+  if (!(n(data.adults ?? data.guests) > 0)) return 'Enter the number of adults';
   if (!(parseFloat(data.amount) > 0)) return 'Enter the amount';
   return null;
 };

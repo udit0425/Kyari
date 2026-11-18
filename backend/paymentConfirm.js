@@ -37,6 +37,7 @@ export const renderPaymentConfirmPage = (booking = {}) => {
   .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px; margin-bottom:14px; }
   .grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
   .full { grid-column:1 / -1; }
+  .guests { display:grid; grid-template-columns:repeat(3, 1fr); gap:12px; }
   label { display:block; font-size:13px; color:var(--muted); margin-bottom:4px; }
   input, select, textarea { width:100%; padding:10px; border:1px solid var(--line); border-radius:8px; background:var(--bg); color:var(--text); font:inherit; }
   input:focus, select:focus, textarea:focus { outline:2px solid var(--accent); outline-offset:-1px; }
@@ -77,9 +78,10 @@ export const renderPaymentConfirmPage = (booking = {}) => {
       <label for="name">Guest name</label>
       <input id="name" type="text" placeholder="optional">
     </div>
-    <div>
-      <label for="guests">Guests</label>
-      <input id="guests" type="number" min="1" value="${esc(prefill.guests)}">
+    <div class="full guests">
+      <div><label for="adults">Adults</label><input id="adults" type="number" min="1" inputmode="numeric" value="${esc(prefill.guests)}"></div>
+      <div><label for="children">Children</label><input id="children" type="number" min="0" inputmode="numeric" placeholder="0"></div>
+      <div><label for="staff">Staff</label><input id="staff" type="number" min="0" inputmode="numeric" placeholder="0"></div>
     </div>
     <div>
       <label for="checkin">Check-in</label>
@@ -118,7 +120,7 @@ export const renderPaymentConfirmPage = (booking = {}) => {
 <script>
 const PREFILL = ${toScriptJson(prefill)};
 const $ = (id) => document.getElementById(id);
-const fields = ['amount', 'total', 'mode', 'name', 'guests', 'checkin', 'checkout', 'phone', 'email'];
+const fields = ['amount', 'total', 'mode', 'name', 'adults', 'children', 'staff', 'checkin', 'checkout', 'phone', 'email'];
 let edited = false;
 
 const inr = (n) => '₹' + Number(n).toLocaleString('en-IN', { maximumFractionDigits: 2 });
@@ -129,7 +131,9 @@ const buildMessage = () => {
   const total = parseFloat($('total').value);
   const name = $('name').value.trim();
   const mode = $('mode').value;
-  const guests = parseInt($('guests').value, 10);
+  const n = (id) => Math.max(0, parseInt($(id).value, 10) || 0);
+  const a = n('adults'), c = n('children'), st = n('staff');
+  const guests = [a && a + ' adult' + (a !== 1 ? 's' : ''), c && c + (c !== 1 ? ' children' : ' child'), st && st + ' staff'].filter(Boolean).join(', ');
   const ci = $('checkin').value, co = $('checkout').value;
   const nights = ci && co ? Math.round((Date.parse(co) - Date.parse(ci)) / 86400000) : 0;
 
@@ -142,7 +146,7 @@ const buildMessage = () => {
   lines.push('Booking details:');
   if (ci) lines.push('• Check-in: ' + fmtDate(ci));
   if (co) lines.push('• Check-out: ' + fmtDate(co) + (nights > 0 ? ' (' + nights + ' night' + (nights !== 1 ? 's' : '') + ')' : ''));
-  if (guests > 0) lines.push('• Guests: ' + guests);
+  if (guests) lines.push('• Guests: ' + guests);
   if (total > 0) {
     lines.push('• Total amount: ' + inr(total));
     lines.push('• Amount received: ' + (amount > 0 ? inr(amount) : '₹____'));
@@ -185,7 +189,7 @@ $('sendMail').addEventListener('click', () => {
     template: 'payment_received',
     amount: $('amount').value, total: $('total').value, payment_mode: $('mode').value,
     guest_name: $('name').value.trim(), guest_email: $('email').value.trim(),
-    guests: $('guests').value, check_in: $('checkin').value, check_out: $('checkout').value
+    adults: $('adults').value, children: $('children').value, staff: $('staff').value, check_in: $('checkin').value, check_out: $('checkout').value
   });
   if (PREFILL.bookingKey) q.set('booking', PREFILL.bookingKey);
   window.open('/admin?' + q.toString(), '_blank');
