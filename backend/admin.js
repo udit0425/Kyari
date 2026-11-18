@@ -243,10 +243,11 @@ const EMAIL_RE = /^[^\s@<>,;]+@[^\s@<>,;]+\.[^\s@<>,;]+$/;
 const isDate = (v) => /^\d{4}-\d{2}-\d{2}$/.test(String(v || '')) && !Number.isNaN(Date.parse(v));
 
 // Everything the admin must enter before an email can go out
-const validate = (data) => {
+// (From is only needed when sending through Resend; Gmail drafts use your own account.)
+const validate = (data, { requireFrom = true } = {}) => {
   const from = String(data.from_email || '').trim();
   const fromAddr = from.includes('<') ? (from.match(/<([^>]+)>/) || [])[1] : from;
-  if (!EMAIL_RE.test(fromAddr || '')) return 'Enter a valid From (sending) email';
+  if (requireFrom && !EMAIL_RE.test(fromAddr || '')) return 'Enter a valid From (sending) email';
   if (!EMAIL_RE.test(String(data.guest_email || '').trim())) return 'Enter a valid guest (receiving) email';
   if (data.reply_to && !EMAIL_RE.test(String(data.reply_to).trim())) return 'Reply-to email is not valid';
   if (!isDate(data.check_in) || !isDate(data.check_out)) return 'Enter check-in and check-out dates';
@@ -284,6 +285,26 @@ api.post('/send', async (req, res) => {
     if (!TEMPLATES[template]) return res.status(400).json({ error: 'Unknown template' });
     const r = await sendAndLog(template, data || {});
     res.status(r.status).json(r.body);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Record an email the admin opened in Gmail / their mail app (we can't know if they pressed send)
+api.post('/emails/draft', async (req, res) => {
+  try {
+    const { template, data = {}, channel } = req.body || {};
+    if (!TEMPLATES[template]) return res.status(400).json({ error: 'Unknown template' });
+    const invalid = validate(data, { requireFrom: false });
+    if (invalid) return res.status(400).json({ error: invalid });
+    const email = renderEmail(template, data);
+    const log = await dbRun(
+      `INSERT INTO email_logs (template, to_email, guest_name, booking_ref, subject, data, status, provider_id, error, resent_from, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [template, String(data.guest_email).trim(), data.guest_name || null, data.booking_ref || null, email.subject,
+        JSON.stringify(data), 'opened', String(channel || 'gmail').slice(0, 20), null, null, new Date().toISOString()]
+    );
+    res.json({ success: true, id: log.lastID });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }

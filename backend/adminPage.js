@@ -89,6 +89,7 @@ export const renderAdminPage = ({ emailConfigured, templates, defaults = {}, log
   th { color:var(--muted); font-weight:600; font-size:12px; text-transform:uppercase; letter-spacing:.5px; }
   .pill { display:inline-block; padding:2px 8px; border-radius:99px; font-size:12px; font-weight:600; }
   .pill.sent { background:color-mix(in srgb, var(--ok) 15%, transparent); color:var(--ok); }
+  .pill.opened { background:color-mix(in srgb, var(--accent) 15%, transparent); color:var(--accent); }
   .pill.failed { background:color-mix(in srgb, var(--bad) 15%, transparent); color:var(--bad); }
   .err-text { color:var(--bad); font-size:12px; margin-top:3px; }
   .muted { color:var(--muted); }
@@ -109,7 +110,6 @@ export const renderAdminPage = ({ emailConfigured, templates, defaults = {}, log
   </nav>
   ${loginRequired ? '<form method="post" action="/admin/logout"><button class="btn ghost small" type="submit">Log out</button></form>' : ''}
 </header>
-${emailConfigured ? '' : '<div class="banner" id="banner">Sending is not set up yet — add your Resend API key in the <b>Settings</b> tab. You can still preview emails.</div>'}
 
 <main>
   <section id="tab-compose" class="compose">
@@ -126,9 +126,9 @@ ${emailConfigured ? '' : '<div class="banner" id="banner">Sending is not set up 
       </div>
 
       <div class="full section-label">Emails</div>
-      <div><label for="from_email">From (sending) email *</label><input id="from_email" type="email" autocomplete="off" placeholder="bookings@send.malbagadh.in"></div>
-      <div><label for="guest_email">To (guest's) email *</label><input id="guest_email" type="email" autocomplete="off" placeholder="guest@example.com"></div>
-      <div class="full"><label for="reply_to">Reply-to email <span class="muted">(where guest replies go — optional)</span></label><input id="reply_to" type="email" autocomplete="off" placeholder="e.g. your Gmail"></div>
+      <div class="full"><label for="guest_email">To (guest's) email *</label><input id="guest_email" type="email" autocomplete="off" placeholder="guest@example.com"></div>
+      <div data-resend-only><label for="from_email">From email <span class="muted">(Resend only)</span></label><input id="from_email" type="email" autocomplete="off" placeholder="bookings@send.malbagadh.in"></div>
+      <div data-resend-only><label for="reply_to">Reply-to email <span class="muted">(Resend only)</span></label><input id="reply_to" type="email" autocomplete="off" placeholder="e.g. your Gmail"></div>
 
       <div class="full section-label">Guest &amp; booking</div>
       <div><label for="guest_name">Guest name</label><input id="guest_name" autocomplete="off"></div>
@@ -152,10 +152,17 @@ ${emailConfigured ? '' : '<div class="banner" id="banner">Sending is not set up 
       <p class="subject"><span>Subject:</span> <span id="subject"></span></p>
       <iframe id="frame" title="Email preview" sandbox></iframe>
       <div class="sendbar">
-        <button class="btn" id="send">Send email</button>
+        <button class="btn" id="gmail">✉️ Open in Gmail</button>
+        <button class="btn ghost" id="mailapp">Other mail app</button>
+        <button class="btn ghost" id="copyhtml">Copy designed email</button>
+        <button class="btn ghost" id="send" data-resend-only>Send via Resend</button>
         <button class="btn ghost" id="clear">Clear form</button>
-        <span class="msg" id="msg" role="status"></span>
       </div>
+      <p class="msg" id="msg" role="status" style="margin:10px 0 0"></p>
+      <p class="muted" style="font-size:13px;margin:8px 0 0">
+        Gmail opens from your own account with To, Subject and the message filled in — just press Send.
+        Want the designed version instead? Click <b>Copy designed email</b> and paste it into the Gmail message body.
+      </p>
     </div>
   </section>
 
@@ -170,7 +177,7 @@ ${emailConfigured ? '' : '<div class="banner" id="banner">Sending is not set up 
 
   <section id="tab-settings" class="settings" hidden>
     <div class="card grid">
-      <div class="full section-label">Email sending (Resend)</div>
+      <div class="full section-label">Direct sending via Resend (optional)</div>
       <div class="full">
         <label for="s_key">Resend API key</label>
         <input id="s_key" type="password" autocomplete="off" placeholder="re_…">
@@ -199,7 +206,10 @@ ${emailConfigured ? '' : '<div class="banner" id="banner">Sending is not set up 
 
 <script>
 const TEMPLATES = ${JSON.stringify(templates).replace(/</g, '\\u003c')};
-const DEFAULTS = ${JSON.stringify(defaults).replace(/</g, '\\u003c')};
+let RESEND_ON = ${emailConfigured ? 'true' : 'false'};
+// Resend-only fields/buttons appear only once a Resend API key is saved in Settings
+const syncResend = () => document.querySelectorAll('[data-resend-only]').forEach((el) => { el.hidden = !RESEND_ON; });
+const DEFAULTS =${JSON.stringify(defaults).replace(/</g, '\\u003c')};
 const SENDER_FIELDS = ['from_email', 'reply_to'];
 const FIELDS = ['from_email', 'reply_to', 'guest_name', 'guest_email', 'booking_ref', 'guests', 'check_in', 'check_out', 'amount', 'total', 'payment_mode', 'payment_link', 'note'];
 const $ = (id) => document.getElementById(id);
@@ -240,9 +250,7 @@ const EMAIL_OK = (v) => /^[^\\s@<>]+@[^\\s@<>]+\\.[^\\s@<>]+$/.test(String(v).tr
 // Returns what's still missing, or '' when the email is ready to send
 const missing = () => {
   const d = formData();
-  if (!EMAIL_OK(d.from_email)) return 'From email';
   if (!EMAIL_OK(d.guest_email)) return 'guest email';
-  if (d.reply_to.trim() && !EMAIL_OK(d.reply_to)) return 'a valid reply-to email';
   if (!d.check_in || !d.check_out) return 'check-in and check-out dates';
   if (d.check_out <= d.check_in) return 'a check-out date after check-in';
   if (!(parseInt(d.guests, 10) > 0)) return 'number of guests';
@@ -250,22 +258,82 @@ const missing = () => {
   return '';
 };
 
+// Latest rendered email { subject, html, text }. Buttons stay disabled until it matches the form,
+// so clicks can open Gmail synchronously (phones block app/popup opens after an await).
+let lastPreview = null;
+const SEND_BUTTONS = ['gmail', 'mailapp', 'copyhtml', 'send'];
+const setButtons = () => {
+  const blocked = Boolean(missing()) || !lastPreview;
+  SEND_BUTTONS.forEach((id) => { $(id).disabled = blocked; });
+};
+
 let previewTimer;
 const refreshPreview = () => {
   clearTimeout(previewTimer);
+  lastPreview = null;
+  setButtons();
   previewTimer = setTimeout(async () => {
     try {
-      const { subject, html } = await api('/preview', { template: $('template').value, data: formData() });
-      $('subject').textContent = subject;
-      $('frame').srcdoc = html;
+      lastPreview = await api('/preview', { template: $('template').value, data: formData() });
+      $('subject').textContent = lastPreview.subject;
+      $('frame').srcdoc = lastPreview.html;
     } catch (e) { $('subject').textContent = e.message; }
+    setButtons();
   }, 250);
   const need = missing();
-  $('send').disabled = Boolean(need);
   if (!$('msg').classList.contains('ok') && !$('msg').classList.contains('bad')) {
-    $('msg').textContent = need ? 'Enter ' + need + ' to send.' : '';
+    $('msg').textContent = need ? 'Enter ' + need + ' to continue.' : '';
   }
 };
+
+// --- Open in Gmail / mail app ---
+const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
+const isMobile = isIOS || /Android|Mobi/i.test(navigator.userAgent);
+const enc = encodeURIComponent;
+
+const logDraft = (channel) => {
+  api('/emails/draft', { template: $('template').value, data: formData(), channel }).catch(() => {});
+  $('msg').className = 'msg ok';
+  $('msg').textContent = '✓ Opened in ' + (channel === 'gmail' ? 'Gmail' : 'your mail app') + ' — press Send there. Saved in History.';
+};
+
+$('gmail').addEventListener('click', () => {
+  const to = $('guest_email').value.trim(), { subject, text } = lastPreview;
+  if (isIOS) {
+    // Gmail iPhone app's own link scheme; if the app isn't installed the page stays visible,
+    // so after a moment fall back to the default mail app.
+    location.href = 'googlegmail://co?to=' + enc(to) + '&subject=' + enc(subject) + '&body=' + enc(text);
+    setTimeout(() => {
+      if (!document.hidden) location.href = 'mailto:' + enc(to) + '?subject=' + enc(subject) + '&body=' + enc(text);
+    }, 1500);
+  } else if (isMobile) {
+    location.href = 'mailto:' + enc(to) + '?subject=' + enc(subject) + '&body=' + enc(text); // Android → Gmail app
+  } else {
+    window.open('https://mail.google.com/mail/?view=cm&fs=1&to=' + enc(to) + '&su=' + enc(subject) + '&body=' + enc(text), '_blank');
+  }
+  logDraft('gmail');
+});
+
+$('mailapp').addEventListener('click', () => {
+  const { subject, text } = lastPreview;
+  location.href = 'mailto:' + enc($('guest_email').value.trim()) + '?subject=' + enc(subject) + '&body=' + enc(text);
+  logDraft('mail app');
+});
+
+$('copyhtml').addEventListener('click', async () => {
+  const { html, text } = lastPreview;
+  try {
+    await navigator.clipboard.write([new ClipboardItem({
+      'text/html': new Blob([html], { type: 'text/html' }),
+      'text/plain': new Blob([text], { type: 'text/plain' })
+    })]);
+    $('msg').className = 'msg ok';
+    $('msg').textContent = '✓ Designed email copied — open Gmail, clear the message body and paste.';
+  } catch {
+    try { await navigator.clipboard.writeText(text); $('msg').className = 'msg ok'; $('msg').textContent = '✓ Copied as plain text (this browser can’t copy the design).'; }
+    catch { $('msg').className = 'msg bad'; $('msg').textContent = 'Copy failed — select the preview and copy manually.'; }
+  }
+});
 
 const loadBookings = async () => {
   try {
@@ -300,6 +368,7 @@ $('clear').addEventListener('click', () => {
 
 $('send').addEventListener('click', async () => {
   const to = $('guest_email').value.trim();
+  if (!EMAIL_OK($('from_email').value)) { $('msg').className = 'msg bad'; $('msg').textContent = 'Enter the From email to send via Resend.'; return; }
   if (!confirm('Send "' + $('subject').textContent + '"\\n\\nFrom: ' + $('from_email').value.trim() + '\\nTo: ' + to + '?')) return;
   saveSender();
   $('send').disabled = true; $('msg').className = 'msg'; $('msg').textContent = 'Sending…';
@@ -310,7 +379,7 @@ $('send').addEventListener('click', async () => {
   } catch (e) {
     $('msg').className = 'msg bad'; $('msg').textContent = 'Failed: ' + e.message;
   }
-  $('send').disabled = false;
+  setButtons();
 });
 
 // --- History ---
@@ -322,11 +391,14 @@ const loadHistory = async () => {
     if (!history.length) { tbody.innerHTML = '<tr><td colspan="6" class="muted">No emails sent yet.</td></tr>'; return; }
     tbody.innerHTML = history.map((e) => '<tr>' +
       '<td>' + escHtml(new Date(e.created_at).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })) + (e.resent_from ? '<div class="muted" style="font-size:12px">resend of #' + e.resent_from + '</div>' : '') + '</td>' +
-      '<td>' + escHtml(e.guest_name || '') + '<div class="muted">' + escHtml((e.data.from_email || '?') + ' → ' + e.to_email) + '</div></td>' +
+      '<td>' + escHtml(e.guest_name || '') + '<div class="muted">' + escHtml(e.status === 'opened'
+        ? 'via ' + (e.provider_id || 'Gmail') + ' → ' + e.to_email
+        : (e.data.from_email || '?') + ' → ' + e.to_email) + '</div></td>' +
       '<td>' + escHtml(TEMPLATES[e.template] || e.template) + '</td>' +
       '<td>' + escHtml(e.booking_ref || '—') + '</td>' +
       '<td><span class="pill ' + escHtml(e.status) + '">' + escHtml(e.status) + '</span>' + (e.error ? '<div class="err-text">' + escHtml(e.error) + '</div>' : '') + '</td>' +
-      '<td><div class="actions"><button class="btn ghost small" data-edit="' + e.id + '">Edit &amp; send</button><button class="btn ghost small" data-resend="' + e.id + '">Resend</button></div></td>' +
+      '<td><div class="actions"><button class="btn ghost small" data-edit="' + e.id + '">Open again</button>' +
+        (RESEND_ON ? '<button class="btn ghost small" data-resend="' + e.id + '">Resend</button>' : '') + '</div></td>' +
       '</tr>').join('');
   } catch (e) { tbody.innerHTML = '<tr><td colspan="6" class="err-text">' + escHtml(e.message) + '</td></tr>'; }
 };
@@ -362,12 +434,12 @@ const showTab = (name) => {
 const showSettings = (s) => {
   $('s_key').value = '';
   $('s_key_status').textContent = s.resend_key_from_env ? 'Set on the server (' + s.resend_key_hint + ') — managed outside this page.'
-    : s.resend_key_set ? 'Saved: ' + s.resend_key_hint + ' — paste a new key to replace it.' : 'Not set — emails cannot be sent until you add it.';
+    : s.resend_key_set ? 'Saved: ' + s.resend_key_hint + ' — paste a new key to replace it.' : 'Not set — that’s fine, emails open in your Gmail instead. Add a key only if you want to send directly from this page.';
   $('s_remove').hidden = !s.resend_key_set || s.resend_key_from_env;
   $('s_from').value = s.default_from_email || '';
   $('s_reply').value = s.default_reply_to || '';
   $('pw_card').hidden = s.password_from_env || !s.login_required;
-  if ($('banner')) $('banner').hidden = s.resend_key_set;
+  RESEND_ON = s.resend_key_set; syncResend(); setButtons();
   DEFAULTS.from_email = s.default_from_email; DEFAULTS.reply_to = s.default_reply_to;
 };
 const loadSettings = async () => {
@@ -401,6 +473,7 @@ document.querySelectorAll('nav [data-tab]').forEach((b) => b.addEventListener('c
   const q = new URLSearchParams(location.search);
   if (q.get('template') && TEMPLATES[q.get('template')]) $('template').value = q.get('template');
   syncTemplate();
+  syncResend();
   loadSender();
   await loadBookings();
   if (q.get('booking')) { $('booking').value = q.get('booking'); applyBooking(q.get('booking')); }
