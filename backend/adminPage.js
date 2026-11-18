@@ -166,7 +166,8 @@ export const renderAdminPage = ({ emailConfigured, templates, defaults = {}, log
       <p class="subject"><span>Subject:</span> <span id="subject"></span></p>
       <iframe id="frame" title="Email preview" sandbox></iframe>
       <div class="sendbar">
-        <button class="btn" id="gmail">✉️ Open in Gmail</button>
+        <button class="btn" id="gmail">✉️ Open in Gmail (designed)</button>
+        <button class="btn ghost" id="gmailtext">Gmail – plain text</button>
         <button class="btn ghost" id="mailapp">Other mail app</button>
         <button class="btn ghost" id="copyhtml">Copy designed email</button>
         <button class="btn ghost" id="send" data-resend-only>Send via Resend</button>
@@ -174,8 +175,9 @@ export const renderAdminPage = ({ emailConfigured, templates, defaults = {}, log
       </div>
       <p class="msg" id="msg" role="status" style="margin:10px 0 0"></p>
       <p class="muted" style="font-size:13px;margin:8px 0 0">
-        Gmail opens from your own account with To, Subject and the message filled in — just press Send.
-        Want the designed version instead? Click <b>Copy designed email</b> and paste it into the Gmail message body.
+        <b>Open in Gmail (designed)</b> copies the template and opens Gmail with To + Subject filled in —
+        click the message box, <b>paste</b> (Ctrl+V / ⌘V, or long-press → Paste on phone) and press Send.
+        Gmail links can't carry designs, so this paste step is needed.
       </p>
     </div>
   </section>
@@ -281,7 +283,7 @@ const missing = () => {
 // Latest rendered email { subject, html, text }. Buttons stay disabled until it matches the form,
 // so clicks can open Gmail synchronously (phones block app/popup opens after an await).
 let lastPreview = null;
-const SEND_BUTTONS = ['gmail', 'mailapp', 'copyhtml', 'send'];
+const SEND_BUTTONS = ['gmail', 'gmailtext', 'mailapp', 'copyhtml', 'send'];
 const setButtons = () => {
   const blocked = Boolean(missing()) || !lastPreview;
   SEND_BUTTONS.forEach((id) => { $(id).disabled = blocked; });
@@ -311,36 +313,78 @@ const refreshPreview = () => {
 };
 
 // --- Open in Gmail / mail app ---
+// Gmail's compose link only accepts plain text, so to get the designed template into your own
+// Gmail we copy it as rich HTML first, then open Gmail with To + Subject — you just paste.
 const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
 const isMobile = isIOS || /Android|Mobi/i.test(navigator.userAgent);
 const enc = encodeURIComponent;
+const pasteKey = isMobile ? 'long-press → Paste' : (/Mac/i.test(navigator.platform) ? '⌘V' : 'Ctrl+V');
 
-const logDraft = (channel) => {
-  api('/emails/draft', { template: $('template').value, data: formData(), channel }).catch(() => {});
-  $('msg').className = 'msg ok';
-  $('msg').textContent = '✓ Opened in ' + (channel === 'gmail' ? 'Gmail' : 'your mail app') + ' — press Send there. Saved in History.';
+const emailBodyHtml = (html) => { const m = html.match(/<body[^>]*>([\\s\\S]*)<\\/body>/i); return m ? m[1] : html; };
+
+// Copies rich HTML synchronously (must run inside the click, before Gmail takes focus).
+const copyRich = (html, text) => {
+  // 1) copy-event route: exact HTML + plain-text fallback
+  let done = false;
+  const onCopy = (e) => { e.clipboardData.setData('text/html', html); e.clipboardData.setData('text/plain', text); e.preventDefault(); done = true; };
+  document.addEventListener('copy', onCopy);
+  try { document.execCommand('copy'); } catch {}
+  document.removeEventListener('copy', onCopy);
+  if (done) return true;
+  // 2) selection route (iPhone Safari): select a hidden rendered copy and copy it
+  const holder = document.createElement('div');
+  holder.contentEditable = 'true';
+  holder.style.cssText = 'position:fixed;left:-10000px;top:0;width:600px;';
+  holder.innerHTML = html;
+  document.body.appendChild(holder);
+  const range = document.createRange(); range.selectNodeContents(holder);
+  const sel = getSelection(); sel.removeAllRanges(); sel.addRange(range);
+  let ok = false;
+  try { ok = document.execCommand('copy'); } catch {}
+  sel.removeAllRanges(); holder.remove();
+  return ok;
 };
 
-$('gmail').addEventListener('click', () => {
-  const to = $('guest_email').value.trim(), { subject, text } = lastPreview;
+const openGmail = (to, subject, body) => {
+  const b = body ? '&body=' + enc(body) : '';
   if (isIOS) {
-    // Gmail iPhone app's own link scheme; if the app isn't installed the page stays visible,
-    // so after a moment fall back to the default mail app.
-    location.href = 'googlegmail://co?to=' + enc(to) + '&subject=' + enc(subject) + '&body=' + enc(text);
-    setTimeout(() => {
-      if (!document.hidden) location.href = 'mailto:' + enc(to) + '?subject=' + enc(subject) + '&body=' + enc(text);
-    }, 1500);
+    // Gmail iPhone app; if it isn't installed the page stays visible → fall back to the mail app
+    location.href = 'googlegmail://co?to=' + enc(to) + '&subject=' + enc(subject) + b;
+    setTimeout(() => { if (!document.hidden) location.href = 'mailto:' + enc(to) + '?subject=' + enc(subject) + b; }, 1500);
   } else if (isMobile) {
-    location.href = 'mailto:' + enc(to) + '?subject=' + enc(subject) + '&body=' + enc(text); // Android → Gmail app
+    location.href = 'mailto:' + enc(to) + '?subject=' + enc(subject) + b; // Android → Gmail app
   } else {
-    window.open('https://mail.google.com/mail/?view=cm&fs=1&to=' + enc(to) + '&su=' + enc(subject) + '&body=' + enc(text), '_blank');
+    window.open('https://mail.google.com/mail/?view=cm&fs=1&to=' + enc(to) + '&su=' + enc(subject) + (body ? '&body=' + enc(body) : ''), '_blank');
   }
+};
+
+const logDraft = (channel) => api('/emails/draft', { template: $('template').value, data: formData(), channel }).catch(() => {});
+const say = (cls, text) => { $('msg').className = 'msg ' + cls; $('msg').textContent = text; };
+
+$('gmail').addEventListener('click', () => {
+  const to = $('guest_email').value.trim(), { subject, html, text } = lastPreview;
+  const copied = copyRich(emailBodyHtml(html), text);
+  if (copied) {
+    openGmail(to, subject, ''); // empty body — paste the design into it
+    say('ok', '✓ Designed email copied. In Gmail, tap the message box and paste (' + pasteKey + '), then press Send.');
+  } else {
+    openGmail(to, subject, text); // couldn't copy → at least send the plain-text version
+    say('bad', 'This browser blocked copying the design, so Gmail opened with the plain-text version.');
+  }
+  logDraft('gmail');
+});
+
+$('gmailtext').addEventListener('click', () => {
+  const { subject, text } = lastPreview;
+  openGmail($('guest_email').value.trim(), subject, text);
+  say('ok', '✓ Opened in Gmail with the plain-text message — press Send there.');
   logDraft('gmail');
 });
 
 $('mailapp').addEventListener('click', () => {
   const { subject, text } = lastPreview;
   location.href = 'mailto:' + enc($('guest_email').value.trim()) + '?subject=' + enc(subject) + '&body=' + enc(text);
+  say('ok', '✓ Opened in your mail app — press Send there.');
   logDraft('mail app');
 });
 
@@ -350,19 +394,9 @@ $('copy_upi').addEventListener('click', async () => {
   catch { prompt('Copy payment link:', lastPreview.pay_url); }
 });
 
-$('copyhtml').addEventListener('click', async () => {
-  const { html, text } = lastPreview;
-  try {
-    await navigator.clipboard.write([new ClipboardItem({
-      'text/html': new Blob([html], { type: 'text/html' }),
-      'text/plain': new Blob([text], { type: 'text/plain' })
-    })]);
-    $('msg').className = 'msg ok';
-    $('msg').textContent = '✓ Designed email copied — open Gmail, clear the message body and paste.';
-  } catch {
-    try { await navigator.clipboard.writeText(text); $('msg').className = 'msg ok'; $('msg').textContent = '✓ Copied as plain text (this browser can’t copy the design).'; }
-    catch { $('msg').className = 'msg bad'; $('msg').textContent = 'Copy failed — select the preview and copy manually.'; }
-  }
+$('copyhtml').addEventListener('click', () => {
+  const ok = copyRich(emailBodyHtml(lastPreview.html), lastPreview.text);
+  say(ok ? 'ok' : 'bad', ok ? '✓ Designed email copied — paste it into any email (' + pasteKey + ').' : 'Copy failed — select the preview and copy manually.');
 });
 
 const loadBookings = async () => {
