@@ -164,6 +164,14 @@ export const initDb = async () => {
     await dbRun('ALTER TABLE booking_requests ADD COLUMN confirm_token TEXT');
   }
 
+  // Key/value settings editable from the admin UI (Resend key, admin password hash, ...)
+  await dbRun(`
+    CREATE TABLE IF NOT EXISTS settings (
+      key TEXT PRIMARY KEY,
+      value TEXT
+    )
+  `);
+
   // Every email sent (or attempted) from the admin Email Manager
   await dbRun(`
     CREATE TABLE IF NOT EXISTS email_logs (

@@ -39,7 +39,30 @@ export const renderLoginPage = (error = '', next = '/admin') => `<!doctype html>
   </form>
 </div></main></body></html>`;
 
-export const renderAdminPage = ({ emailConfigured, templates, defaults = {} }) => `<!doctype html>
+export const renderSetupPage = (error = '') => `<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex"><title>Email Manager · Setup</title>
+<style>${BASE_CSS}
+  main { max-width:400px; margin:10vh auto; padding:0 16px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:20px; }
+  h1 { font-size:20px; margin:0 0 8px; } p { color:var(--muted); font-size:14px; margin:0 0 14px; }
+  .err { color:var(--bad); } .field { margin-bottom:12px; } .btn { width:100%; margin-top:4px; }
+  code { background:var(--bg); padding:1px 5px; border-radius:4px; }
+</style></head>
+<body><main><div class="card">
+  <h1>Set up Email Manager</h1>
+  <p>Find the <b>setup code</b> in your Render dashboard → backend service → <b>Logs</b>
+     (line starting <code>[Admin] Email Manager setup code</code>). Then choose your admin password.</p>
+  ${error ? `<p class="err">${esc(error)}</p>` : ''}
+  <form method="post" action="/admin/setup">
+    <div class="field"><label for="code">Setup code</label><input id="code" name="code" autocomplete="off" autofocus required></div>
+    <div class="field"><label for="pw">New admin password (min 8 characters)</label><input id="pw" name="password" type="password" autocomplete="new-password" minlength="8" required></div>
+    <div class="field"><label for="pw2">Confirm password</label><input id="pw2" name="confirm" type="password" autocomplete="new-password" minlength="8" required></div>
+    <button class="btn" type="submit">Save password &amp; continue</button>
+  </form>
+</div></main></body></html>`;
+
+export const renderAdminPage =({ emailConfigured, templates, defaults = {} }) => `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex"><title>Email Manager · Malbagadh</title>
 <style>${BASE_CSS}
@@ -70,6 +93,7 @@ export const renderAdminPage = ({ emailConfigured, templates, defaults = {} }) =
   .err-text { color:var(--bad); font-size:12px; margin-top:3px; }
   .muted { color:var(--muted); }
   .table-wrap { overflow-x:auto; }
+  .settings { max-width:640px; display:grid; gap:16px; }
   .actions { white-space:nowrap; display:flex; gap:6px; }
   [hidden] { display:none !important; }
   @media (max-width:860px) { .compose { grid-template-columns:1fr; } .preview { position:static; } iframe { height:60vh; } }
@@ -81,10 +105,11 @@ export const renderAdminPage = ({ emailConfigured, templates, defaults = {} }) =
   <nav role="tablist">
     <button role="tab" aria-selected="true" data-tab="compose">Compose</button>
     <button role="tab" aria-selected="false" data-tab="history">History</button>
+    <button role="tab" aria-selected="false" data-tab="settings">Settings</button>
   </nav>
   <form method="post" action="/admin/logout"><button class="btn ghost small" type="submit">Log out</button></form>
 </header>
-${emailConfigured ? '' : '<div class="banner">Sending is not set up yet — add <b>RESEND_API_KEY</b> on the server. You can still preview emails; sends will be logged as failed.</div>'}
+${emailConfigured ? '' : '<div class="banner" id="banner">Sending is not set up yet — add your Resend API key in the <b>Settings</b> tab. You can still preview emails.</div>'}
 
 <main>
   <section id="tab-compose" class="compose">
@@ -140,6 +165,34 @@ ${emailConfigured ? '' : '<div class="banner">Sending is not set up yet — add 
         <thead><tr><th>Sent</th><th>From → To</th><th>Template</th><th>Booking</th><th>Status</th><th></th></tr></thead>
         <tbody id="history"><tr><td colspan="6" class="muted">Loading…</td></tr></tbody>
       </table>
+    </div>
+  </section>
+
+  <section id="tab-settings" class="settings" hidden>
+    <div class="card grid">
+      <div class="full section-label">Email sending (Resend)</div>
+      <div class="full">
+        <label for="s_key">Resend API key</label>
+        <input id="s_key" type="password" autocomplete="off" placeholder="re_…">
+        <div class="muted" style="font-size:13px;margin-top:4px" id="s_key_status"></div>
+      </div>
+      <div><label for="s_from">Default From email</label><input id="s_from" type="email" placeholder="bookings@send.malbagadh.in"></div>
+      <div><label for="s_reply">Default Reply-to email</label><input id="s_reply" type="email" placeholder="optional, e.g. your Gmail"></div>
+      <div class="full sendbar" style="margin-top:0">
+        <button class="btn" id="s_save">Save settings</button>
+        <button class="btn ghost" id="s_remove" hidden>Remove API key</button>
+        <span class="msg" id="s_msg" role="status"></span>
+      </div>
+    </div>
+
+    <div class="card grid" id="pw_card">
+      <div class="full section-label">Admin password</div>
+      <div><label for="p_current">Current password</label><input id="p_current" type="password" autocomplete="current-password"></div>
+      <div><label for="p_new">New password (min 8)</label><input id="p_new" type="password" autocomplete="new-password"></div>
+      <div class="full sendbar" style="margin-top:0">
+        <button class="btn" id="p_save">Change password</button>
+        <span class="msg" id="p_msg" role="status"></span>
+      </div>
     </div>
   </section>
 </main>
@@ -300,8 +353,47 @@ const showTab = (name) => {
   document.querySelectorAll('nav [data-tab]').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.tab === name)));
   $('tab-compose').hidden = name !== 'compose';
   $('tab-history').hidden = name !== 'history';
+  $('tab-settings').hidden = name !== 'settings';
   if (name === 'history') loadHistory();
+  if (name === 'settings') loadSettings();
 };
+
+// --- Settings ---
+const showSettings = (s) => {
+  $('s_key').value = '';
+  $('s_key_status').textContent = s.resend_key_from_env ? 'Set on the server (' + s.resend_key_hint + ') — managed outside this page.'
+    : s.resend_key_set ? 'Saved: ' + s.resend_key_hint + ' — paste a new key to replace it.' : 'Not set — emails cannot be sent until you add it.';
+  $('s_remove').hidden = !s.resend_key_set || s.resend_key_from_env;
+  $('s_from').value = s.default_from_email || '';
+  $('s_reply').value = s.default_reply_to || '';
+  $('pw_card').hidden = s.password_from_env;
+  if ($('banner')) $('banner').hidden = s.resend_key_set;
+  DEFAULTS.from_email = s.default_from_email; DEFAULTS.reply_to = s.default_reply_to;
+};
+const loadSettings = async () => {
+  try { showSettings(await api('/settings')); } catch (e) { $('s_msg').className = 'msg bad'; $('s_msg').textContent = e.message; }
+};
+const saveSettings = async (extra) => {
+  $('s_msg').className = 'msg'; $('s_msg').textContent = 'Saving…';
+  try {
+    const r = await api('/settings', { resend_api_key: $('s_key').value, default_from_email: $('s_from').value, default_reply_to: $('s_reply').value, ...extra });
+    showSettings(r.settings);
+    // New defaults apply to the compose form too
+    try { localStorage.removeItem('mb_sender'); } catch {}
+    loadSender(); refreshPreview();
+    $('s_msg').className = 'msg ok'; $('s_msg').textContent = '✓ Saved';
+  } catch (e) { $('s_msg').className = 'msg bad'; $('s_msg').textContent = e.message; }
+};
+$('s_save').addEventListener('click', () => saveSettings());
+$('s_remove').addEventListener('click', () => { if (confirm('Remove the saved Resend API key? Sending will stop working.')) saveSettings({ remove_resend_key: true }); });
+$('p_save').addEventListener('click', async () => {
+  $('p_msg').className = 'msg'; $('p_msg').textContent = 'Saving…';
+  try {
+    await api('/password', { current: $('p_current').value, password: $('p_new').value });
+    $('p_current').value = $('p_new').value = '';
+    $('p_msg').className = 'msg ok'; $('p_msg').textContent = '✓ Password changed';
+  } catch (e) { $('p_msg').className = 'msg bad'; $('p_msg').textContent = e.message; }
+});
 document.querySelectorAll('nav [data-tab]').forEach((b) => b.addEventListener('click', () => showTab(b.dataset.tab)));
 
 // --- Init: optional prefill from URL, e.g. /admin?booking=req-12&template=payment_received&amount=5000 ---

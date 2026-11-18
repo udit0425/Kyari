@@ -1,9 +1,9 @@
 // Guest emails: templates + delivery through Resend's HTTP API (no SDK needed).
 //
-// Env:
-//   RESEND_API_KEY  – API key from resend.com (required to actually send)
-//   EMAIL_FROM      – verified sender, default "Malbagadh Homestay <bookings@send.malbagadh.in>"
-//   EMAIL_REPLY_TO  – where guest replies go (optional, e.g. your Gmail)
+// Configured from the admin Settings tab (Resend API key, default From / Reply-to).
+// Env vars RESEND_API_KEY / EMAIL_FROM / EMAIL_REPLY_TO override them if ever set.
+
+import { getSetting } from './settings.js';
 
 const BRAND = 'Malbagadh Homestay';
 const PHONE_DISPLAY = '+91 98370 56370';
@@ -146,20 +146,24 @@ export const renderEmail = (template, d = {}) => {
   return { subject, html, text };
 };
 
-export const isEmailConfigured = () => Boolean(process.env.RESEND_API_KEY);
+// Settings come from the admin Settings tab (DB); env vars, if present, take priority.
+const getApiKey = () => (process.env.RESEND_API_KEY || getSetting('resend_api_key') || '').trim();
+export const isEmailConfigured = () => Boolean(getApiKey());
+export const apiKeyHint = () => { const k = getApiKey(); return k ? `${k.slice(0, 3)}…${k.slice(-4)}` : ''; };
 
 // Defaults shown in the admin form; the admin can change them per email.
-export const DEFAULT_FROM_EMAIL = (process.env.EMAIL_FROM || 'bookings@send.malbagadh.in').replace(/^.*<([^>]+)>.*$/, '$1').trim();
-export const DEFAULT_REPLY_TO = (process.env.EMAIL_REPLY_TO || '').trim();
+export const getDefaultFrom = () =>
+  (process.env.EMAIL_FROM || getSetting('default_from_email') || 'bookings@send.malbagadh.in').replace(/^.*<([^>]+)>.*$/, '$1').trim();
+export const getDefaultReplyTo = () => (process.env.EMAIL_REPLY_TO || getSetting('default_reply_to') || '').trim();
 
 // Accepts "you@domain" or "Name <you@domain>"; a bare address gets the brand name.
 const formatFrom = (from) => (String(from).includes('<') ? String(from).trim() : `${BRAND} <${String(from).trim()}>`);
 
 export const sendEmail = async ({ from, replyTo, to, subject, html, text }) => {
-  const apiKey = process.env.RESEND_API_KEY;
-  if (!apiKey) return { success: false, error: 'RESEND_API_KEY is not set on the server' };
+  const apiKey = getApiKey();
+  if (!apiKey) return { success: false, error: 'Resend API key is not set — add it in the Settings tab' };
 
-  const body = { from: formatFrom(from || DEFAULT_FROM_EMAIL), to: [to], subject, html, text };
+  const body = { from: formatFrom(from || getDefaultFrom()), to: [to], subject, html, text };
   if (replyTo) body.reply_to = replyTo;
 
   try {

@@ -8,7 +8,7 @@ import { runCrawl } from './scraper.js';
 import crypto from 'crypto';
 import { sendSlackBookingAlert, sendSlackClickAlert } from './slack.js';
 import { renderPaymentConfirmPage } from './paymentConfirm.js';
-import adminRouter from './admin.js';
+import adminRouter, { initAdmin } from './admin.js';
 
 const app = express();
 const PORT = process.env.PORT || 5001;
@@ -364,7 +364,8 @@ app.listen(PORT, '0.0.0.0', async () => {
   try {
     // 1. Initialize SQLite Database Tables and Seed Data
     await initDb();
-    
+    await initAdmin(); // loads settings; logs a one-time setup code if no admin password yet
+
     // 2. Run initial crawl to sync with platform contents
     await runCrawl();
     
