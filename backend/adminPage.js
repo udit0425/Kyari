@@ -151,9 +151,10 @@ export const renderAdminPage = ({ emailConfigured, templates, defaults = {}, log
       </div>
       <div class="full" data-for="booking_received">
         <label>UPI payment request <span class="muted">(made automatically from amount + booking ID)</span></label>
+        <p class="muted" style="font-size:12px;margin:0 0 6px">Share the <b>payment link</b> (not the raw upi:// link) — it lets the guest pick GPay / PhonePe / Paytm instead of opening WhatsApp Pay.</p>
         <div class="upi-box"><code id="upi_link">Enter the amount to create the payment request</code></div>
         <div class="sendbar" style="margin-top:8px">
-          <button type="button" class="btn ghost small" id="copy_upi" disabled>Copy UPI link</button>
+          <button type="button" class="btn ghost small" id="copy_upi" disabled>Copy payment link</button>
           <a class="btn ghost small" id="open_pay" target="_blank" rel="noopener" hidden>Open pay page</a>
         </div>
       </div>
@@ -344,8 +345,9 @@ $('mailapp').addEventListener('click', () => {
 });
 
 $('copy_upi').addEventListener('click', async () => {
-  try { await navigator.clipboard.writeText(lastPreview.upi_link); $('copy_upi').textContent = 'Copied ✓'; setTimeout(() => { $('copy_upi').textContent = 'Copy UPI link'; }, 1500); }
-  catch { prompt('Copy UPI link:', lastPreview.upi_link); }
+  // Share the https pay page, not the raw upi:// link — inside WhatsApp a upi:// link opens WhatsApp Pay.
+  try { await navigator.clipboard.writeText(lastPreview.pay_url); $('copy_upi').textContent = 'Copied ✓'; setTimeout(() => { $('copy_upi').textContent = 'Copy payment link'; }, 1500); }
+  catch { prompt('Copy payment link:', lastPreview.pay_url); }
 });
 
 $('copyhtml').addEventListener('click', async () => {

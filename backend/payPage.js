@@ -12,6 +12,22 @@ export const renderPayPage = ({ am, tr }) => {
   const hasAmount = Number.isFinite(amount) && amount > 0;
   const ref = String(tr || '').replace(/[^A-Za-z0-9_-]/g, '').slice(0, 35);
   const upi = buildUpiLink({ amount: hasAmount ? amount : '', ref });
+  const q = upi.slice('upi://pay?'.length);
+
+  // A plain upi:// link opens the phone's *default* UPI handler — often WhatsApp (it has
+  // WhatsApp Pay built in). App-specific links open exactly the app the guest taps.
+  // Android: intent links pinned to the app's package (fall back to Play Store if missing).
+  // iPhone: each app's own URL scheme.
+  const apps = [
+    { name: 'Google Pay', pkg: 'com.google.android.apps.nbu.paisa.user', ios: `gpay://upi/pay?${q}` },
+    { name: 'PhonePe', pkg: 'com.phonepe.app', ios: `phonepe://pay?${q}` },
+    { name: 'Paytm', pkg: 'net.one97.paytm', ios: `paytmmp://pay?${q}` },
+    { name: 'BHIM', pkg: 'in.org.npci.upiapp', ios: null }
+  ].map((a) => ({
+    name: a.name,
+    android: `intent://pay?${q}#Intent;scheme=upi;package=${a.pkg};end`,
+    ios: a.ios
+  }));
   const amountText = hasAmount ? `₹${amount.toLocaleString('en-IN', { maximumFractionDigits: 2 })}` : '';
 
   return `<!doctype html>
@@ -33,6 +49,8 @@ export const renderPayPage = ({ am, tr }) => {
   .upi b { color:var(--text); user-select:all; }
   button.copy { background:none; border:1px solid var(--line); color:var(--text); border-radius:8px; padding:4px 10px; margin-left:6px; cursor:pointer; font:inherit; font-size:13px; }
   .hint { color:var(--muted); font-size:13px; margin-top:14px; }
+  .apps { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  .other { display:inline-block; margin-top:12px; color:var(--accent); font-size:14px; }
   [hidden] { display:none !important; }
 </style></head>
 <body><main><div class="card">
@@ -41,8 +59,11 @@ export const renderPayPage = ({ am, tr }) => {
   <p class="ref">${ref ? `Booking ${esc(ref)}` : '&nbsp;'}</p>
 
   <div id="mobile" hidden>
-    <a class="btn" href="${esc(upi)}">Pay with UPI app</a>
-    <p class="hint">Opens GPay, PhonePe, Paytm or any UPI app with the amount filled in.</p>
+    <p class="hint" style="margin:0 0 10px">Choose your UPI app — the amount is filled in for you.</p>
+    <div class="apps">
+      ${apps.map((a) => `<a class="btn app" data-android="${esc(a.android)}" data-ios="${esc(a.ios || '')}" href="${esc(upi)}">${esc(a.name)}</a>`).join('\n      ')}
+    </div>
+    <a class="other" href="${esc(upi)}">Other UPI app</a>
   </div>
   <div id="desktop" hidden>
     <div id="qr" aria-label="UPI QR code"></div>
@@ -57,8 +78,14 @@ export const renderPayPage = ({ am, tr }) => {
   var UPI = ${JSON.stringify(upi).replace(/</g, '\\u003c')};
   var mobile = /Android|iPhone|iPad|iPod|Mobi/i.test(navigator.userAgent);
   document.getElementById(mobile ? 'mobile' : 'desktop').hidden = false;
-  if (mobile) { setTimeout(function () { location.href = UPI; }, 300); }
-  else if (window.QRCode) { new QRCode(document.getElementById('qr'), { text: UPI, width: 220, height: 220 }); }
+  // No auto-redirect: that would open the default UPI handler (often WhatsApp).
+  var isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
+  if (mobile) {
+    document.querySelectorAll('a.app').forEach(function (a) {
+      var link = isIOS ? a.getAttribute('data-ios') : a.getAttribute('data-android');
+      if (link) a.href = link; else a.hidden = true; // app has no iPhone link → hide it there
+    });
+  } else if (window.QRCode) { new QRCode(document.getElementById('qr'), { text: UPI, width: 220, height: 220 }); }
   document.getElementById('copy').onclick = function () {
     var id = document.getElementById('upiId').textContent;
     (navigator.clipboard ? navigator.clipboard.writeText(id) : Promise.reject()).then(
