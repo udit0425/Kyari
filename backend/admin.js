@@ -16,6 +16,10 @@ const COOKIE = 'mb_admin';
 const SESSION_DAYS = 30;
 const MIN_PASSWORD = 8;
 
+// ⚠️ Login is OFF for now: anyone who opens /admin can use it. Set to true to require the
+// admin password again (first run then logs a setup code — see notes at top of file).
+const LOGIN_REQUIRED = false;
+
 // --- Password storage (scrypt hash in settings) ---
 const hashPassword = (pw) => {
   const salt = crypto.randomBytes(16).toString('hex');
@@ -40,7 +44,7 @@ let setupCode = null;
 export const initAdmin = async () => {
   await loadSettings();
   if (!getSetting('session_secret')) await setSetting('session_secret', crypto.randomBytes(32).toString('hex'));
-  if (!hasPassword()) {
+  if (LOGIN_REQUIRED && !hasPassword()) {
     setupCode = crypto.randomBytes(5).toString('hex').toUpperCase();
     console.log('==================================================================');
     console.log(`[Admin] Email Manager setup code: ${setupCode}`);
@@ -60,6 +64,7 @@ const readCookie = (req, name) => {
 };
 
 const isLoggedIn = (req) => {
+  if (!LOGIN_REQUIRED) return true;
   if (!hasPassword() || !getSetting('session_secret')) return false;
   const raw = readCookie(req, COOKIE);
   if (!raw) return false;
@@ -133,10 +138,10 @@ router.post('/logout', (req, res) => {
 });
 
 router.get('/', (req, res) => {
-  if (!hasPassword()) return res.type('html').send(renderSetupPage(setupCode ? '' : 'Server is still starting — refresh in a few seconds.'));
+  if (LOGIN_REQUIRED && !hasPassword()) return res.type('html').send(renderSetupPage(setupCode ? '' : 'Server is still starting — refresh in a few seconds.'));
   if (!isLoggedIn(req)) return res.type('html').send(renderLoginPage('', req.originalUrl));
   res.type('html').send(renderAdminPage({
-    emailConfigured: isEmailConfigured(), templates: TEMPLATES,
+    emailConfigured: isEmailConfigured(), templates: TEMPLATES, loginRequired: LOGIN_REQUIRED,
     defaults: { from_email: getDefaultFrom(), reply_to: getDefaultReplyTo() }
   }));
 });
@@ -156,7 +161,8 @@ const settingsView = () => ({
   resend_key_from_env: Boolean(process.env.RESEND_API_KEY),
   default_from_email: getDefaultFrom(),
   default_reply_to: getDefaultReplyTo(),
-  password_from_env: Boolean(envPassword())
+  password_from_env: Boolean(envPassword()),
+  login_required: LOGIN_REQUIRED
 });
 
 api.get('/settings', (req, res) => res.json(settingsView()));

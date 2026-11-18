@@ -62,7 +62,7 @@ export const renderSetupPage = (error = '') => `<!doctype html>
   </form>
 </div></main></body></html>`;
 
-export const renderAdminPage =({ emailConfigured, templates, defaults = {} }) => `<!doctype html>
+export const renderAdminPage = ({ emailConfigured, templates, defaults = {}, loginRequired = true }) => `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex"><title>Email Manager · Malbagadh</title>
 <style>${BASE_CSS}
@@ -107,7 +107,7 @@ export const renderAdminPage =({ emailConfigured, templates, defaults = {} }) =>
     <button role="tab" aria-selected="false" data-tab="history">History</button>
     <button role="tab" aria-selected="false" data-tab="settings">Settings</button>
   </nav>
-  <form method="post" action="/admin/logout"><button class="btn ghost small" type="submit">Log out</button></form>
+  ${loginRequired ? '<form method="post" action="/admin/logout"><button class="btn ghost small" type="submit">Log out</button></form>' : ''}
 </header>
 ${emailConfigured ? '' : '<div class="banner" id="banner">Sending is not set up yet — add your Resend API key in the <b>Settings</b> tab. You can still preview emails.</div>'}
 
@@ -366,7 +366,7 @@ const showSettings = (s) => {
   $('s_remove').hidden = !s.resend_key_set || s.resend_key_from_env;
   $('s_from').value = s.default_from_email || '';
   $('s_reply').value = s.default_reply_to || '';
-  $('pw_card').hidden = s.password_from_env;
+  $('pw_card').hidden = s.password_from_env || !s.login_required;
   if ($('banner')) $('banner').hidden = s.resend_key_set;
   DEFAULTS.from_email = s.default_from_email; DEFAULTS.reply_to = s.default_reply_to;
 };
