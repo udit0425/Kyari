@@ -158,6 +158,30 @@ export const initDb = async () => {
     }
   }
 
+  // Unguessable token so payment-confirmation links in Slack can't be enumerated by ID
+  const requestCols = (await dbAll('PRAGMA table_info(booking_requests)')).map(c => c.name);
+  if (!requestCols.includes('confirm_token')) {
+    await dbRun('ALTER TABLE booking_requests ADD COLUMN confirm_token TEXT');
+  }
+
+  // Every email sent (or attempted) from the admin Email Manager
+  await dbRun(`
+    CREATE TABLE IF NOT EXISTS email_logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      template TEXT NOT NULL,
+      to_email TEXT NOT NULL,
+      guest_name TEXT,
+      booking_ref TEXT,
+      subject TEXT,
+      data TEXT,
+      status TEXT NOT NULL,
+      provider_id TEXT,
+      error TEXT,
+      resent_from INTEGER,
+      created_at TEXT NOT NULL
+    )
+  `);
+
   // Check if seeded
   const bookingsCount = await dbGet('SELECT COUNT(*) as count FROM bookings');
   if (bookingsCount.count === 0) {

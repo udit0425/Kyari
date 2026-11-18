@@ -5,10 +5,15 @@ import { fileURLToPath } from 'url';
 import { initDb, dbAll, dbRun, dbGet } from './database.js';
 import { runCrawl } from './scraper.js';
 
+import crypto from 'crypto';
 import { sendSlackBookingAlert, sendSlackClickAlert } from './slack.js';
+import { renderPaymentConfirmPage } from './paymentConfirm.js';
+import adminRouter from './admin.js';
 
 const app = express();
 const PORT = process.env.PORT || 5001;
+// Public URL of this backend — used for links placed in Slack messages
+const PUBLIC_BASE_URL = (process.env.PUBLIC_BASE_URL || 'https://api.malbagadh.in').replace(/\/$/, '');
 
 // Middleware
 app.use(cors({
@@ -94,14 +99,16 @@ app.post('/api/booking-request', async (req, res) => {
 
   try {
     const timestamp = new Date().toISOString();
+    const confirmToken = crypto.randomBytes(16).toString('hex');
     const result = await dbRun(
-      'INSERT INTO booking_requests (guest_phone, check_in, check_out, guest_count, status, created_at) VALUES (?, ?, ?, ?, ?, ?)',
-      [guest_phone, check_in, check_out, guest_count || 2, 'Pending', timestamp]
+      'INSERT INTO booking_requests (guest_phone, check_in, check_out, guest_count, status, created_at, confirm_token) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      [guest_phone, check_in, check_out, guest_count || 2, 'Pending', timestamp, confirmToken]
     );
 
     console.log(`[Booking Request] ✅ Saved to DB — ID: ${result.lastID}, phone: ${guest_phone}, dates: ${check_in} → ${check_out}, guests: ${guest_count || 2}`);
 
-    const slackResult = await sendSlackBookingAlert({ check_in, check_out, guest_phone, guest_count });
+    const paymentConfirmUrl = `${PUBLIC_BASE_URL}/payment-confirm?id=${result.lastID}&t=${confirmToken}`;
+    const slackResult = await sendSlackBookingAlert({ check_in, check_out, guest_phone, guest_count, paymentConfirmUrl });
 
     if (!slackResult.success) {
       // The request is safely stored; don't fail the guest's submission.
@@ -114,6 +121,33 @@ app.post('/api/booking-request', async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 });
+
+// Payment confirmation drafter — opened from the "Payment Confirmation" button in Slack.
+// With a valid id + token the guest's details are prefilled; without them it's a blank form
+// usable for any booking (Airbnb, phone, walk-in...). It only drafts: WhatsApp / email open
+// with the message prefilled and the owner presses send.
+app.get('/payment-confirm', async (req, res) => {
+  let booking = {};
+  const { id, t } = req.query;
+  if (id && t) {
+    try {
+      const row = await dbGet('SELECT * FROM booking_requests WHERE id = ?', [id]);
+      const valid = row?.confirm_token && typeof t === 'string' && t.length === row.confirm_token.length &&
+        crypto.timingSafeEqual(Buffer.from(t), Buffer.from(row.confirm_token));
+      if (valid) {
+        booking = { id: row.id, guest_phone: row.guest_phone, check_in: row.check_in, check_out: row.check_out, guest_count: row.guest_count };
+      }
+    } catch (error) {
+      console.error('[Payment Confirm] Lookup failed:', error.message);
+    }
+  }
+  res.set('Cache-Control', 'no-store');
+  res.set('X-Robots-Tag', 'noindex');
+  res.type('html').send(renderPaymentConfirmPage(booking));
+});
+
+// Admin Email Manager (password-protected)
+app.use('/admin', adminRouter);
 
 // Get all booking requests
 app.get('/api/booking-requests', async (req, res) => {

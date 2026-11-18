@@ -16,7 +16,7 @@ const normalizePhone = (phone) => {
   return digits;
 };
 
-export const sendSlackBookingAlert = async ({ check_in, check_out, guest_phone, guest_count }) => {
+export const sendSlackBookingAlert = async ({ check_in, check_out, guest_phone, guest_count, paymentConfirmUrl }) => {
   const webhookUrl = getWebhookUrl();
 
   if (!webhookUrl) {
@@ -58,7 +58,12 @@ export const sendSlackBookingAlert = async ({ check_in, check_out, guest_phone, 
             style: 'primary',
             text: { type: 'plain_text', text: '💬 Reply on WhatsApp', emoji: true },
             url: waLink
-          }
+          },
+          ...(paymentConfirmUrl ? [{
+            type: 'button',
+            text: { type: 'plain_text', text: '✅ Payment Confirmation (WA / Email)', emoji: true },
+            url: paymentConfirmUrl
+          }] : [])
         ]
       }
     ]
